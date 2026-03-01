@@ -1,0 +1,119 @@
+import React from "react";
+import {
+  LayoutDashboard,
+  Briefcase,
+  FileText,
+  Settings,
+  PlusCircle,
+  CreditCard,
+  Users,
+  FolderOpen,
+} from "lucide-react";
+
+export function Sidebar({
+  activeTab,
+  setActiveTab,
+}: {
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+}) {
+  return (
+    <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
+      <div className="p-6 border-b border-slate-100">
+        <h1 className="text-2xl font-bold text-indigo-600 flex items-center gap-2">
+          <Briefcase className="w-6 h-6" />
+          Jobdo
+        </h1>
+      </div>
+      <nav className="flex-1 p-4 space-y-1">
+        <NavItem
+          icon={<PlusCircle />}
+          label="New Request"
+          active={activeTab === "new-request"}
+          onClick={() => setActiveTab("new-request")}
+        />
+        <NavItem
+          icon={<LayoutDashboard />}
+          label="Dashboard"
+          active={activeTab === "dashboard"}
+          onClick={() => setActiveTab("dashboard")}
+        />
+        <NavItem
+          icon={<Briefcase />}
+          label="Jobs"
+          active={activeTab === "jobs"}
+          onClick={() => setActiveTab("jobs")}
+        />
+        <NavItem
+          icon={<CreditCard />}
+          label="Payroll"
+          active={activeTab === "payroll"}
+          onClick={() => setActiveTab("payroll")}
+        />
+        <NavItem
+          icon={<FolderOpen />}
+          label="Files"
+          active={activeTab === "files"}
+          onClick={() => setActiveTab("files")}
+        />
+        <NavItem
+          icon={<Users />}
+          label="Users"
+          active={activeTab === "users"}
+          onClick={() => setActiveTab("users")}
+        />
+        <NavItem
+          icon={<FileText />}
+          label="Invoices"
+          active={activeTab === "invoices"}
+          onClick={() => setActiveTab("invoices")}
+        />
+        <NavItem
+          icon={<Settings />}
+          label="Settings"
+          active={activeTab === "settings"}
+          onClick={() => setActiveTab("settings")}
+        />
+      </nav>
+      <div className="p-4 border-t border-slate-100">
+        <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+          <p className="text-xs font-medium text-slate-500 mb-2 uppercase tracking-wider">
+            Automations
+          </p>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-slate-700">AI Invoice Gen</span>
+            <span className="w-8 h-4 bg-indigo-600 rounded-full relative cursor-pointer">
+              <span className="absolute right-0.5 top-0.5 w-3 h-3 bg-white rounded-full shadow-sm"></span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function NavItem({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+        active
+          ? "bg-indigo-50 text-indigo-600"
+          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+      }`}
+    >
+      {React.cloneElement(icon as React.ReactElement, { className: "w-5 h-5" })}
+      {label}
+    </button>
+  );
+}
