@@ -1,5 +1,5 @@
 {
-  "name": "Jobdo Tracking",
+  "name": "Tick-It",
   "description": "Custom automation to seamlessly track jobs from incoming request to final invoice and completion.",
   "requestFramePermissions": []
 }

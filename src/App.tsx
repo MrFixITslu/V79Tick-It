@@ -200,9 +200,9 @@ const initialFiles: FileItem[] = [
 ];
 
 const initialSettings: BusinessSettings = {
-  name: "Jobdo Solutions",
+  name: "Tick-It Solutions",
   address: "123 Creative Plaza, Design District, NY 10001",
-  email: "billing@jobdo.com",
+  email: "billing@tick-it.com",
   phone: "+1 (555) 000-1234",
   logoUrl: "https://picsum.photos/200/100?random=1",
   paymentTerms: "Please make payment within 30 days of receiving this invoice.",
