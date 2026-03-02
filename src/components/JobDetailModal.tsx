@@ -15,6 +15,9 @@ import {
   Printer,
   MessageSquare,
   Send,
+  Timer,
+  Play,
+  Square,
 } from "lucide-react";
 import { BusinessSettings } from "./Settings";
 
@@ -34,6 +37,11 @@ export function JobDetailModal({
   const [invoiceNotes, setInvoiceNotes] = useState(job.invoiceNotes || "");
   const [showInvoicePreview, setShowInvoicePreview] = useState(false);
   const [newNote, setNewNote] = useState("");
+  const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [activeTimerStart, setActiveTimerStart] = useState<string | null>(null);
+
+  // For Demo purposes, hardcode current employee
+  const currentEmployeeId = employees[0]?.id || "e1";
 
   const handleSaveNotes = () => {
     onUpdate({ ...job, invoiceNotes });
@@ -51,6 +59,43 @@ export function JobDetailModal({
     setNewNote("");
   };
 
+  const handleToggleTimer = () => {
+    if (isTimerRunning) {
+      // Stop timer logic
+      const sessionStart = activeTimerStart || new Date().toISOString();
+      const sessionEnd = new Date().toISOString();
+      const newTimeLog = {
+        id: crypto.randomUUID(),
+        employeeId: currentEmployeeId,
+        startTime: sessionStart,
+        endTime: sessionEnd,
+      };
+
+      onUpdate({
+        ...job,
+        timeLogs: [...(job.timeLogs || []), newTimeLog],
+      });
+
+      setIsTimerRunning(false);
+      setActiveTimerStart(null);
+    } else {
+      // Start timer logic
+      setIsTimerRunning(true);
+      setActiveTimerStart(new Date().toISOString());
+    }
+  };
+
+  const calculateTotalHours = () => {
+    if (!job.timeLogs || job.timeLogs.length === 0) return 0;
+
+    return job.timeLogs.reduce((total, log) => {
+      if (!log.endTime) return total;
+      const start = new Date(log.startTime).getTime();
+      const end = new Date(log.endTime).getTime();
+      return total + (end - start) / (1000 * 60 * 60); // convert ms to hours
+    }, 0);
+  };
+
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -58,13 +103,12 @@ export function JobDetailModal({
           <div className="flex items-center gap-3">
             <h3 className="text-xl font-bold text-slate-900">{job.title}</h3>
             <span
-              className={`text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-md ${
-                job.priority === "high"
+              className={`text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-md ${job.priority === "high"
                   ? "bg-red-100 text-red-700"
                   : job.priority === "medium"
                     ? "bg-yellow-100 text-yellow-700"
                     : "bg-slate-200 text-slate-700"
-              }`}
+                }`}
             >
               {job.priority}
             </span>
@@ -103,15 +147,43 @@ export function JobDetailModal({
                 {job.amount ? job.amount.toLocaleString() : "TBD"}
               </p>
             </div>
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-                <Calendar className="w-3 h-3" /> Due Date
-              </p>
-              <p className="font-semibold text-slate-900">
-                {job.dueDate
-                  ? new Date(job.dueDate).toLocaleDateString()
-                  : "Not set"}
-              </p>
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 relative group overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 to-purple-50 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="relative z-10">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                    <Timer className="w-3.5 h-3.5" /> Time Logged
+                  </p>
+                  <button
+                    onClick={handleToggleTimer}
+                    className={`p-1.5 rounded-full flex items-center gap-1 text-[10px] font-bold uppercase transition-all shadow-sm ${isTimerRunning
+                        ? "bg-red-100 text-red-700 hover:bg-red-200"
+                        : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                      }`}
+                  >
+                    {isTimerRunning ? (
+                      <>
+                        <Square className="w-3 h-3 fill-current" /> Stop
+                      </>
+                    ) : (
+                      <>
+                        <Play className="w-3 h-3 fill-current" /> Start Timer
+                      </>
+                    )}
+                  </button>
+                </div>
+                <div className="flex items-end gap-2">
+                  <p className="text-2xl font-black text-slate-900 tracking-tight">
+                    {calculateTotalHours().toFixed(2)}<span className="text-sm font-semibold text-slate-500 ml-1">hrs</span>
+                  </p>
+                  {isTimerRunning && (
+                    <span className="flex h-2.5 w-2.5 relative mb-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -224,8 +296,8 @@ export function JobDetailModal({
           )}
 
           {job.status === "invoiced" ||
-          job.status === "completed" ||
-          invoiceNotes ? (
+            job.status === "completed" ||
+            invoiceNotes ? (
             <div className="border-t border-slate-100 pt-6 space-y-6">
               <div className="flex items-center justify-between">
                 <h4 className="text-sm font-semibold text-slate-900 flex items-center gap-2">

@@ -13,7 +13,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from "recharts";
-import { Briefcase, CheckCircle2, Clock, AlertCircle, History } from "lucide-react";
+import { Briefcase, CheckCircle2, Clock, AlertCircle, History, Timer, TrendingUp } from "lucide-react";
 
 export function Dashboard({ jobs }: { jobs: Job[] }) {
   const statusData = [
@@ -36,6 +36,20 @@ export function Dashboard({ jobs }: { jobs: Job[] }) {
     .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
     .slice(0, 10);
 
+  const totalTimeLogged = jobs.reduce((total, job) => {
+    if (!job.timeLogs) return total;
+    return total + job.timeLogs.reduce((jobTotal, log) => {
+      if (!log.endTime) return jobTotal;
+      const start = new Date(log.startTime).getTime();
+      const end = new Date(log.endTime).getTime();
+      return jobTotal + (end - start) / (1000 * 60 * 60);
+    }, 0);
+  }, 0);
+
+  const estimatedRevenue = jobs
+    .filter(j => j.status === 'completed' || j.status === 'invoiced' || j.status === 'paid')
+    .reduce((total, job) => total + (job.amount || 0), 0);
+
   return (
     <div className="space-y-8">
       <div>
@@ -43,31 +57,55 @@ export function Dashboard({ jobs }: { jobs: Job[] }) {
         <p className="text-slate-500 text-sm mt-1">Premium analytics and performance metrics.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <StatCard
-          icon={<Briefcase className="w-5 h-5 text-blue-600" />}
-          label="Total Jobs"
-          value={jobs.length}
-          color="bg-blue-50"
-        />
-        <StatCard
-          icon={<Clock className="w-5 h-5 text-purple-600" />}
-          label="In Progress"
-          value={jobs.filter((j) => j.status === "in-progress").length}
-          color="bg-purple-50"
-        />
-        <StatCard
-          icon={<CheckCircle2 className="w-5 h-5 text-green-600" />}
-          label="Completed"
-          value={jobs.filter((j) => j.status === "completed").length}
-          color="bg-green-50"
-        />
-        <StatCard
-          icon={<AlertCircle className="w-5 h-5 text-red-600" />}
-          label="High Priority"
-          value={jobs.filter((j) => j.priority === "high").length}
-          color="bg-red-50"
-        />
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6">
+        <div className="col-span-1 md:col-span-2">
+          <StatCard
+            icon={<Briefcase className="w-5 h-5 text-blue-600" />}
+            label="Total Jobs"
+            value={jobs.length}
+            color="bg-blue-50"
+          />
+        </div>
+        <div className="col-span-1 md:col-span-2">
+          <StatCard
+            icon={<Timer className="w-5 h-5 text-indigo-600" />}
+            label="Total Hours Logged"
+            value={Number(totalTimeLogged.toFixed(1))}
+            color="bg-indigo-50"
+          />
+        </div>
+        <div className="col-span-1 md:col-span-2">
+          <StatCard
+            icon={<TrendingUp className="w-5 h-5 text-emerald-600" />}
+            label="Est. Revenue"
+            value={`$${estimatedRevenue.toLocaleString()}`}
+            color="bg-emerald-50"
+          />
+        </div>
+        <div className="col-span-1 md:col-span-2">
+          <StatCard
+            icon={<Clock className="w-5 h-5 text-purple-600" />}
+            label="In Progress"
+            value={jobs.filter((j) => j.status === "in-progress").length}
+            color="bg-purple-50"
+          />
+        </div>
+        <div className="col-span-1 md:col-span-2">
+          <StatCard
+            icon={<CheckCircle2 className="w-5 h-5 text-green-600" />}
+            label="Completed"
+            value={jobs.filter((j) => j.status === "completed").length}
+            color="bg-green-50"
+          />
+        </div>
+        <div className="col-span-1 md:col-span-2">
+          <StatCard
+            icon={<AlertCircle className="w-5 h-5 text-red-600" />}
+            label="High Priority"
+            value={jobs.filter((j) => j.priority === "high").length}
+            color="bg-red-50"
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -138,11 +176,11 @@ export function Dashboard({ jobs }: { jobs: Job[] }) {
           )}
         </div>
       </div>
-    </div>
+    </div >
   );
 }
 
-function StatCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number; color: string }) {
+function StatCard({ icon, label, value, color }: { icon: React.ReactNode; label: string; value: number | string; color: string }) {
   return (
     <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-4">
       <div className={`w-12 h-12 rounded-xl ${color} flex items-center justify-center shrink-0`}>

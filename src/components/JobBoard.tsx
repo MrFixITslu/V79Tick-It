@@ -3,6 +3,7 @@ import { Job, JobStatus, ActivityLogEntry, COLUMNS, Employee } from "../types";
 import { Plus, MoreHorizontal, Clock, DollarSign, ArrowRight, ArrowLeft } from "lucide-react";
 import { JobModal } from "./JobModal";
 import { JobDetailModal } from "./JobDetailModal";
+import { GanttView } from "./GanttView";
 import { BusinessSettings } from "./Settings";
 
 export function JobBoard({
@@ -18,6 +19,7 @@ export function JobBoard({
 }) {
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"kanban" | "timeline">("kanban");
 
   const moveJob = (jobId: string, newStatus: JobStatus) => {
     setJobs(
@@ -27,10 +29,38 @@ export function JobBoard({
             id: crypto.randomUUID(),
             action: `Moved from ${job.status} to ${newStatus}`,
             timestamp: new Date().toISOString(),
-            user: "Current User", // In a real app, this would be the logged-in user
+            user: "System Workflow",
           };
+
+          let additionalUpdates: Partial<Job> = {};
+
+          // Smart Workflow: Auto-generate invoice template when moved to Invoiced
+          if (newStatus === "invoiced" && !job.invoiceNotes) {
+            const timeLoggedHours = job.timeLogs?.reduce((total, log) => {
+              if (!log.endTime) return total;
+              const start = new Date(log.startTime).getTime();
+              const end = new Date(log.endTime).getTime();
+              return total + (end - start) / (1000 * 60 * 60);
+            }, 0) || 0;
+
+            let description = `1. Project Delivery: ${job.title} - $${job.amount || 0}\n`;
+            if (timeLoggedHours > 0) {
+              description += `2. Hourly Labor: ${timeLoggedHours.toFixed(1)} hrs\n`;
+            }
+            additionalUpdates.invoiceNotes = description;
+
+            newLog.action = `Moved to Invoiced + Auto-drafted invoice`;
+          }
+
+          // Smart Workflow: Auto-generate estimate when moved to Estimation
+          if (newStatus === "estimation" && !job.amount) {
+            additionalUpdates.amount = 500; // Default estimate
+            newLog.action = `Moved to Estimation + Generated $500 baseline estimate`;
+          }
+
           return {
             ...job,
+            ...additionalUpdates,
             status: newStatus,
             activityLog: [...(job.activityLog || []), newLog],
           };
@@ -60,6 +90,24 @@ export function JobBoard({
             Track and manage jobs from request to completion.
           </p>
         </div>
+      </div>
+      <div className="flex items-center gap-3">
+        <div className="bg-slate-200 p-1 rounded-lg flex items-center text-sm font-medium">
+          <button
+            onClick={() => setViewMode("kanban")}
+            className={`px-3 py-1.5 rounded-md transition-all ${viewMode === "kanban" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+          >
+            Kanban
+          </button>
+          <button
+            onClick={() => setViewMode("timeline")}
+            className={`px-3 py-1.5 rounded-md transition-all ${viewMode === "timeline" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              }`}
+          >
+            Timeline
+          </button>
+        </div>
         <button
           onClick={() => setIsNewModalOpen(true)}
           className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm"
@@ -69,43 +117,50 @@ export function JobBoard({
         </button>
       </div>
 
-      <div className="flex-1 flex gap-6 overflow-x-auto pb-4">
-        {COLUMNS.map((col) => (
-          <div key={col.id} className="flex-shrink-0 w-80 flex flex-col">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-slate-700">{col.label}</h3>
-                <span
-                  className={`text-xs font-medium px-2 py-0.5 rounded-full ${col.color}`}
-                >
-                  {jobs.filter((j) => j.status === col.id).length}
-                </span>
-              </div>
-              <button className="text-slate-400 hover:text-slate-600">
-                <MoreHorizontal className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="flex-1 bg-slate-100/50 rounded-xl p-3 flex flex-col gap-3 overflow-y-auto border border-slate-200/50">
-              {jobs
-                .filter((j) => j.status === col.id)
-                .map((job) => (
-                  <JobCard
-                    key={job.id}
-                    job={job}
-                    moveJob={moveJob}
-                    onClick={() => setSelectedJobId(job.id)}
-                  />
-                ))}
-              {jobs.filter((j) => j.status === col.id).length === 0 && (
-                <div className="h-24 border-2 border-dashed border-slate-200 rounded-lg flex items-center justify-center text-slate-400 text-sm">
-                  No jobs here
+      {viewMode === "kanban" ? (
+        <div className="flex-1 flex gap-6 overflow-x-auto pb-4">
+          {COLUMNS.map((col) => (
+            <div key={col.id} className="flex-shrink-0 w-80 flex flex-col">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-semibold text-slate-700">{col.label}</h3>
+                  <span
+                    className={`text-xs font-medium px-2 py-0.5 rounded-full ${col.color}`}
+                  >
+                    {jobs.filter((j) => j.status === col.id).length}
+                  </span>
                 </div>
-              )}
+                <button className="text-slate-400 hover:text-slate-600">
+                  <MoreHorizontal className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 bg-slate-100/50 rounded-xl p-3 flex flex-col gap-3 overflow-y-auto border border-slate-200/50">
+                {jobs
+                  .filter((j) => j.status === col.id)
+                  .map((job) => (
+                    <JobCard
+                      key={job.id}
+                      job={job}
+                      moveJob={moveJob}
+                      onClick={() => setSelectedJobId(job.id)}
+                    />
+                  ))}
+                {jobs.filter((j) => j.status === col.id).length === 0 && (
+                  <div className="h-24 border-2 border-dashed border-slate-200 rounded-lg flex items-center justify-center text-slate-400 text-sm">
+                    No jobs here
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex-1 overflow-hidden">
+          <GanttView jobs={jobs} onJobClick={(id) => setSelectedJobId(id)} />
+        </div>
+      )
+      }
 
       <JobModal
         isOpen={isNewModalOpen}
@@ -114,18 +169,20 @@ export function JobBoard({
         employees={employees}
       />
 
-      {selectedJob && (
-        <JobDetailModal
-          job={selectedJob}
-          employees={employees}
-          settings={settings}
-          onClose={() => setSelectedJobId(null)}
-          onUpdate={(updatedJob) => {
-            setJobs(jobs.map((j) => (j.id === updatedJob.id ? updatedJob : j)));
-          }}
-        />
-      )}
-    </div>
+      {
+        selectedJob && (
+          <JobDetailModal
+            job={selectedJob}
+            employees={employees}
+            settings={settings}
+            onClose={() => setSelectedJobId(null)}
+            onUpdate={(updatedJob) => {
+              setJobs(jobs.map((j) => (j.id === updatedJob.id ? updatedJob : j)));
+            }}
+          />
+        )
+      }
+    </div >
   );
 }
 
@@ -146,13 +203,12 @@ const JobCard: React.FC<{
     >
       <div className="flex justify-between items-start mb-2">
         <span
-          className={`text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded-md ${
-            job.priority === "high"
-              ? "bg-red-50 text-red-600"
-              : job.priority === "medium"
-                ? "bg-yellow-50 text-yellow-600"
-                : "bg-slate-100 text-slate-600"
-          }`}
+          className={`text-[10px] uppercase font-bold tracking-wider px-2 py-1 rounded-md ${job.priority === "high"
+            ? "bg-red-50 text-red-600"
+            : job.priority === "medium"
+              ? "bg-yellow-50 text-yellow-600"
+              : "bg-slate-100 text-slate-600"
+            }`}
         >
           {job.priority}
         </span>

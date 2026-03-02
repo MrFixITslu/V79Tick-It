@@ -9,6 +9,7 @@ import { UserManagement } from "./components/UserManagement";
 import { FileRepository } from "./components/FileRepository";
 import { Invoices } from "./components/Invoices";
 import { Settings, BusinessSettings } from "./components/Settings";
+import { ClientPortal } from "./components/ClientPortal";
 import { Job, Employee, PayrollRecord, AppUser, FileItem } from "./types";
 
 const initialJobs: Job[] = [
@@ -218,6 +219,21 @@ export default function App() {
   const [users, setUsers] = useState<AppUser[]>(initialUsers);
   const [files, setFiles] = useState<FileItem[]>(initialFiles);
   const [settings, setSettings] = useState<BusinessSettings>(initialSettings);
+  const [clientPortalJobId, setClientPortalJobId] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    // Check for magic link in URL (e.g. ?client_portal=job_123)
+    const params = new URLSearchParams(window.location.search);
+    const portalJobId = params.get("client_portal");
+    if (portalJobId) {
+      setClientPortalJobId(portalJobId);
+    }
+  }, []);
+
+  if (clientPortalJobId) {
+    const job = jobs.find((j) => j.id === clientPortalJobId) || null;
+    return <ClientPortal job={job} settings={settings} />;
+  }
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 font-sans">

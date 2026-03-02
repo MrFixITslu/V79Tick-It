@@ -68,6 +68,14 @@ export interface PayrollRecord {
   status: "pending" | "paid";
 }
 
+export interface TimeLog {
+  id: string;
+  employeeId: string;
+  startTime: string;
+  endTime?: string;
+  description?: string;
+}
+
 export interface Job {
   id: string;
   title: string;
@@ -83,6 +91,7 @@ export interface Job {
   tags?: string[];
   activityLog?: ActivityLogEntry[];
   notes?: JobNote[];
+  timeLogs?: TimeLog[];
 }
 
 export type PagePermission = "dashboard" | "jobs" | "payroll" | "invoices" | "users" | "files" | "new-request";
