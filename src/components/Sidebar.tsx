@@ -22,7 +22,7 @@ export function Sidebar({
       <div className="p-6 border-b border-slate-100">
         <h1 className="text-2xl font-bold text-indigo-600 flex items-center gap-2">
           <Briefcase className="w-6 h-6" />
-          Tick-It
+          Auvic
         </h1>
       </div>
       <nav className="flex-1 p-4 space-y-1">
@@ -106,11 +106,10 @@ function NavItem({
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
-        active
+      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${active
           ? "bg-indigo-50 text-indigo-600"
           : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
-      }`}
+        }`}
     >
       {React.cloneElement(icon as React.ReactElement, { className: "w-5 h-5" })}
       {label}
