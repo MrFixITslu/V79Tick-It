@@ -1,7 +1,8 @@
 import React from "react";
 import { Job } from "../types";
-import { Clock, DollarSign, Calendar, History, FileText, MessageSquare, Send, User } from "lucide-react";
+import { Clock, DollarSign, Calendar, History, FileText, MessageSquare, Send, User, Download } from "lucide-react";
 import { BusinessSettings } from "./Settings";
+import { InvoiceView } from "./InvoiceView";
 
 export function ClientPortal({
     token
@@ -14,12 +15,14 @@ export function ClientPortal({
     const [error, setError] = React.useState<string | null>(null);
 
     const [isPaying, setIsPaying] = React.useState(false);
+    const [isPayingDeposit, setIsPayingDeposit] = React.useState(false);
     const [paymentSuccess, setPaymentSuccess] = React.useState(false);
 
     const [messages, setMessages] = React.useState<any[]>([]);
     const [newMessage, setNewMessage] = React.useState("");
     const [isSending, setIsSending] = React.useState(false);
     const [isChatOpen, setIsChatOpen] = React.useState(false);
+    const [showInvoice, setShowInvoice] = React.useState(false);
     const chatEndRef = React.useRef<HTMLDivElement>(null);
 
 
@@ -101,15 +104,33 @@ export function ClientPortal({
         }
     };
 
-    const handlePayment = () => {
+    const handlePayment = async () => {
         setIsPaying(true);
-        // Simulate Stripe checkout flow
-        setTimeout(() => {
+        try {
+            const res = await fetch(`/api/portal/${token}/pay-final`, { method: "POST" });
+            if (res.ok) {
+                setPaymentSuccess(true);
+                setJob(prev => prev ? { ...prev, status: 'paid' } : null);
+            }
+        } catch (e) {
+            console.error("Payment error:", e);
+        } finally {
             setIsPaying(false);
-            setPaymentSuccess(true);
-            // In a real app, this would trigger a webhook to update the backend
-            // which would real-time sync with Auvic dashboard
-        }, 1500);
+        }
+    };
+
+    const handlePayDeposit = async () => {
+        setIsPayingDeposit(true);
+        try {
+            const res = await fetch(`/api/portal/${token}/pay-deposit`, { method: "POST" });
+            if (res.ok) {
+                setJob(prev => prev ? { ...prev, depositPaid: true } : null);
+            }
+        } catch (e) {
+            console.error("Deposit payment error:", e);
+        } finally {
+            setIsPayingDeposit(false);
+        }
     };
 
     if (isLoading) {
@@ -198,28 +219,59 @@ export function ClientPortal({
                         </div>
                     </div>
 
-                    {job.status === "invoiced" && job.invoiceNotes && !paymentSuccess && (
+                    {/* Deposit Section */}
+                    {job.amount && !job.depositPaid && (job.status === 'request' || job.status === 'estimation') && (
+                        <div className="bg-amber-50 border border-amber-100 p-6 rounded-2xl">
+                            <div className="flex items-center gap-2 mb-4 text-amber-700 font-bold">
+                                <DollarSign className="w-5 h-5" />
+                                <h3>30% Deposit Required</h3>
+                            </div>
+                            <p className="text-sm text-amber-900/80 mb-6">
+                                A 30% deposit is required to secure your project and begin engineering work.
+                            </p>
+                            <button
+                                onClick={handlePayDeposit}
+                                disabled={isPayingDeposit}
+                                className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md shadow-amber-200 flex items-center justify-center gap-2"
+                            >
+                                {isPayingDeposit ? (
+                                    <span className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" />
+                                ) : (
+                                    <>Pay Deposit - ${(job.amount * 0.3).toLocaleString()}</>
+                                )}
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Final Payment Section */}
+                    {job.status === "invoiced" && !paymentSuccess && (
                         <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-2xl">
                             <div className="flex items-center gap-2 mb-4 text-indigo-700 font-bold">
                                 <FileText className="w-5 h-5" />
                                 <h3>Invoice Ready</h3>
                             </div>
-                            <p className="text-sm text-indigo-900/80 mb-6">
-                                Your project has been completed and an invoice has been generated.
-                            </p>
-                            <button
-                                onClick={handlePayment}
-                                disabled={isPaying}
-                                title="Secure payment for this invoice"
-                                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md shadow-indigo-200 flex items-center justify-center gap-2"
-                            >
-                                {isPaying ? (
-                                    <span className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" />
-                                ) : (
-                                    <>Pay Now - ${job.amount?.toLocaleString()}</>
-                                )}
-                            </button>
-                            <p className="text-[10px] text-indigo-400 mt-4 text-center sm:text-left flex items-center justify-center sm:justify-start gap-1">
+                            <div className="flex flex-col sm:flex-row gap-3">
+                                <button
+                                    onClick={handlePayment}
+                                    disabled={isPaying}
+                                    title="Secure payment for this invoice"
+                                    className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md shadow-indigo-200 flex items-center justify-center gap-2"
+                                >
+                                    {isPaying ? (
+                                        <span className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" />
+                                    ) : (
+                                        <>Pay Final Balance - ${(job.amount || 0).toLocaleString()}</>
+                                    )}
+                                </button>
+                                <button
+                                    onClick={() => setShowInvoice(true)}
+                                    className="flex-1 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-6 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+                                >
+                                    <FileText className="w-5 h-5" />
+                                    View Invoice
+                                </button>
+                            </div>
+                            <p className="text-xs text-indigo-400 mt-4 text-center sm:text-left flex items-center justify-center sm:justify-start gap-1">
                                 Secure payment powered by <strong>Stripe</strong>
                             </p>
                         </div>
@@ -282,7 +334,7 @@ export function ClientPortal({
                                 </div>
                                 <div>
                                     <p className="text-sm font-bold leading-tight">Project Team</p>
-                                    <p className="text-[10px] opacity-70">Active Now</p>
+                                    <p className="text-xs opacity-70">Active Now</p>
                                 </div>
                             </div>
                             <button onClick={() => setIsChatOpen(false)} className="hover:bg-indigo-500 p-1 rounded-lg transition-colors">
@@ -304,7 +356,7 @@ export function ClientPortal({
                                         : 'bg-white text-slate-700 border border-slate-100 rounded-tl-none'
                                         }`}>
                                         <p>{m.content}</p>
-                                        <p className={`text-[9px] mt-1 opacity-60 ${m.sender === 'Client' ? 'text-right' : 'text-left'}`}>
+                                        <p className={`text-xs mt-1 opacity-60 ${m.sender === 'Client' ? 'text-right' : 'text-left'}`}>
                                             {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                         </p>
                                     </div>
@@ -341,12 +393,20 @@ export function ClientPortal({
                         className="w-14 h-14 bg-indigo-600 text-white rounded-full shadow-lg hover:bg-indigo-700 hover:scale-110 active:scale-95 transition-all flex items-center justify-center relative group"
                     >
                         <MessageSquare className="w-6 h-6" />
-                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full border-2 border-slate-50 group-hover:animate-bounce">
+                        <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold px-1.5 py-0.5 rounded-full border-2 border-slate-50 group-hover:animate-bounce">
                             Live
                         </span>
                     </button>
                 )}
             </div>
+
+            {showInvoice && (
+                <InvoiceView
+                    job={job}
+                    settings={settings}
+                    onClose={() => setShowInvoice(false)}
+                />
+            )}
         </div>
     );
 }

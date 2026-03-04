@@ -204,7 +204,7 @@ export function JobRequestForm({ onSave, employees, className = "" }: JobRequest
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-sm font-semibold text-slate-700">Job Description</label>
-            <span className="text-[10px] text-slate-400 uppercase font-bold tracking-widest">Detailed Scope</span>
+            <span className="text-xs text-slate-400 uppercase font-bold tracking-widest">Detailed Scope</span>
           </div>
           <textarea
             required

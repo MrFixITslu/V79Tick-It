@@ -162,11 +162,11 @@ startxref
             <p className="text-xs text-slate-500 mb-4">{formatSize(file.size)}</p>
 
             <div className="pt-3 border-t border-slate-100 space-y-2">
-              <div className="flex items-center gap-2 text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+              <div className="flex items-center gap-2 text-xs text-slate-400 uppercase font-bold tracking-wider">
                 <Clock className="w-3 h-3" />
                 {new Date(file.uploadedAt).toLocaleDateString()}
               </div>
-              <div className="flex items-center gap-2 text-[10px] text-slate-400 uppercase font-bold tracking-wider">
+              <div className="flex items-center gap-2 text-xs text-slate-400 uppercase font-bold tracking-wider">
                 <User className="w-3 h-3" />
                 {file.uploadedBy}
               </div>

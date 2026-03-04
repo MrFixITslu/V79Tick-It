@@ -46,17 +46,17 @@ app.get("/api/jobs", (req, res) => {
 
 // Create a new job
 app.post("/api/jobs", (req, res) => {
-    const { id: reqId, title, client, description, status, createdAt, dueDate, amount, priority, invoiceNotes, assignedTo, clientEmail, tags, activityLog } = req.body;
+    const { id: reqId, title, client, description, status, createdAt, dueDate, amount, priority, invoiceNotes, assignedTo, clientEmail, tags, activityLog, depositPaid } = req.body;
     const id = reqId || uuidv4();
     const secureToken = uuidv4();
 
     try {
         const insertJob = db.prepare(`
-            INSERT INTO jobs (id, title, client, description, status, createdAt, dueDate, amount, priority, invoiceNotes, assignedTo, clientEmail, secureToken)
-            VALUES (@id, @title, @client, @description, @status, @createdAt, @dueDate, @amount, @priority, @invoiceNotes, @assignedTo, @clientEmail, @secureToken)
+            INSERT INTO jobs (id, title, client, description, status, createdAt, dueDate, amount, priority, invoiceNotes, assignedTo, clientEmail, secureToken, depositPaid)
+            VALUES (@id, @title, @client, @description, @status, @createdAt, @dueDate, @amount, @priority, @invoiceNotes, @assignedTo, @clientEmail, @secureToken, @depositPaid)
         `);
 
-        insertJob.run({ id, title, client, description, status, createdAt, dueDate, amount, priority, invoiceNotes, assignedTo, clientEmail, secureToken });
+        insertJob.run({ id, title, client, description, status, createdAt, dueDate, amount, priority, invoiceNotes, assignedTo, clientEmail, secureToken, depositPaid: depositPaid ? 1 : 0 });
 
         if (tags && tags.length > 0) {
             const insertTag = db.prepare('INSERT INTO job_tags (job_id, tag) VALUES (?, ?)');
@@ -93,7 +93,7 @@ app.post("/api/jobs", (req, res) => {
 // Update a job
 app.put("/api/jobs/:id", async (req, res) => {
     const { id } = req.params;
-    const { title, client, description, status, dueDate, amount, priority, invoiceNotes, assignedTo, clientEmail, tags, activityLog } = req.body;
+    const { title, client, description, status, dueDate, amount, priority, invoiceNotes, assignedTo, clientEmail, tags, activityLog, depositPaid } = req.body;
 
     try {
         // Get old status to detect a change
@@ -104,11 +104,11 @@ app.put("/api/jobs/:id", async (req, res) => {
             UPDATE jobs SET 
                 title = @title, client = @client, description = @description, status = @status, 
                 dueDate = @dueDate, amount = @amount, priority = @priority, invoiceNotes = @invoiceNotes, 
-                assignedTo = @assignedTo, clientEmail = @clientEmail
+                assignedTo = @assignedTo, clientEmail = @clientEmail, depositPaid = @depositPaid
             WHERE id = @id
         `);
 
-        updateJob.run({ id, title, client, description, status, dueDate, amount, priority, invoiceNotes, assignedTo, clientEmail });
+        updateJob.run({ id, title, client, description, status, dueDate, amount, priority, invoiceNotes, assignedTo, clientEmail, depositPaid: depositPaid ? 1 : 0 });
 
         if (tags) {
             db.prepare('DELETE FROM job_tags WHERE job_id = ?').run(id);
@@ -156,6 +156,44 @@ app.get("/api/portal/:token", (req, res) => {
         };
 
         res.json(populatedJob);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Pay deposit via portal
+app.post("/api/portal/:token/pay-deposit", (req, res) => {
+    const { token } = req.params;
+    try {
+        const job = db.prepare("SELECT id FROM jobs WHERE secureToken = ?").get(token);
+        if (!job) return res.status(404).json({ error: "Invalid link" });
+
+        db.prepare("UPDATE jobs SET depositPaid = 1 WHERE id = ?").run(job.id);
+
+        // Add activity log
+        db.prepare("INSERT INTO activity_logs (id, job_id, action, timestamp, user) VALUES (?, ?, ?, ?, ?)")
+            .run(uuidv4(), job.id, "30% Deposit paid via portal", new Date().toISOString(), "Client");
+
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Pay final balance via portal
+app.post("/api/portal/:token/pay-final", (req, res) => {
+    const { token } = req.params;
+    try {
+        const job = db.prepare("SELECT id FROM jobs WHERE secureToken = ?").get(token);
+        if (!job) return res.status(404).json({ error: "Invalid link" });
+
+        db.prepare("UPDATE jobs SET status = 'paid' WHERE id = ?").run(job.id);
+
+        // Add activity log
+        db.prepare("INSERT INTO activity_logs (id, job_id, action, timestamp, user) VALUES (?, ?, ?, ?, ?)")
+            .run(uuidv4(), job.id, "Final payment received via portal", new Date().toISOString(), "Client");
+
+        res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

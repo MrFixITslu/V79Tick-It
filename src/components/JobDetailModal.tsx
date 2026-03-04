@@ -20,6 +20,7 @@ import {
   Square,
 } from "lucide-react";
 import { BusinessSettings } from "./Settings";
+import { InvoiceView } from "./InvoiceView";
 
 export function JobDetailModal({
   job,
@@ -128,6 +129,10 @@ export function JobDetailModal({
   };
 
   const handleToggleTimer = () => {
+    if (!job.depositPaid && !isTimerRunning) {
+      alert("A 30% deposit must be paid before work can start on this job.");
+      return;
+    }
     if (isTimerRunning) {
       // Stop timer logic
       const sessionStart = activeTimerStart || new Date().toISOString();
@@ -190,6 +195,16 @@ export function JobDetailModal({
       return total + (end - start) / (1000 * 60 * 60); // convert ms to hours
     }, 0);
   };
+
+  const formatTime = (hours: number) => {
+    const totalSeconds = Math.floor(hours * 3600);
+    const h = Math.floor(totalSeconds / 3600);
+    const m = Math.floor((totalSeconds % 3600) / 60);
+    const s = totalSeconds % 60;
+    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const totalHours = calculateTotalHours();
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -255,16 +270,28 @@ export function JobDetailModal({
                 placeholder="Client Email"
                 value={job.clientEmail || ""}
                 onChange={(e) => updateJobInDb({ ...job, clientEmail: e.target.value })}
-                className="text-[10px] w-full px-2 py-1 bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
+                className="text-xs w-full px-2 py-1 bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
               />
             </div>
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-2 relative">
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
                 <Clock className="w-3 h-3" /> Status
               </p>
-              <p className="font-semibold text-slate-900 capitalize">
-                {job.status.replace("-", " ")}
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="font-semibold text-slate-900 capitalize">
+                  {job.status.replace("-", " ")}
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase">Deposit</span>
+                  <button
+                    onClick={() => updateJobInDb({ ...job, depositPaid: !job.depositPaid })}
+                    title={`Mark deposit as ${job.depositPaid ? 'unpaid' : 'paid'}`}
+                    className={`w-8 h-4 rounded-full transition-colors relative ${job.depositPaid ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                  >
+                    <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${job.depositPaid ? 'left-4.5' : 'left-0.5'}`} />
+                  </button>
+                </div>
+              </div>
             </div>
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
@@ -283,7 +310,7 @@ export function JobDetailModal({
                   </p>
                   <button
                     onClick={handleToggleTimer}
-                    className={`p-1.5 rounded-full flex items-center gap-1 text-[10px] font-bold uppercase transition-all shadow-sm ${isTimerRunning
+                    className={`p-1.5 rounded-full flex items-center gap-1 text-xs font-bold uppercase transition-all shadow-sm ${isTimerRunning
                       ? "bg-red-100 text-red-700 hover:bg-red-200"
                       : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
                       }`}
@@ -300,8 +327,8 @@ export function JobDetailModal({
                   </button>
                 </div>
                 <div className="flex items-end gap-2">
-                  <p className="text-2xl font-black text-slate-900 tracking-tight">
-                    {calculateTotalHours().toFixed(2)}<span className="text-sm font-semibold text-slate-500 ml-1">hrs</span>
+                  <p className="text-2xl font-mono font-black text-slate-900 tracking-tight">
+                    {formatTime(totalHours)}
                   </p>
                   {isTimerRunning && (
                     <span className="flex h-2.5 w-2.5 relative mb-2">
@@ -396,7 +423,7 @@ export function JobDetailModal({
                     <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mt-1.5 shrink-0" />
                     <div>
                       <p className="text-sm text-slate-700">{log.action}</p>
-                      <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
+                      <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">
                         {log.user} • {new Date(log.timestamp).toLocaleString()}
                       </p>
                     </div>
@@ -414,7 +441,7 @@ export function JobDetailModal({
                   {job.notes?.map((note) => (
                     <div key={note.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100">
                       <p className="text-sm text-slate-700 mb-1">{note.text}</p>
-                      <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
+                      <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">
                         {note.user} • {new Date(note.timestamp).toLocaleString()}
                       </p>
                     </div>
@@ -456,11 +483,11 @@ export function JobDetailModal({
                         ? 'bg-indigo-600 text-white rounded-tr-none'
                         : 'bg-slate-100 text-slate-700 border border-slate-200 rounded-tl-none'
                         }`}>
-                        <div className="flex items-center gap-1.5 mb-1 opacity-60 text-[9px] font-bold uppercase tracking-wider">
+                        <div className="flex items-center gap-1.5 mb-1 opacity-60 text-xs font-bold uppercase tracking-wider">
                           <User className="w-2.5 h-2.5" /> {m.sender}
                         </div>
                         <p>{m.content}</p>
-                        <p className={`text-[9px] mt-1 opacity-60 ${m.sender !== 'Client' ? 'text-right' : 'text-left'}`}>
+                        <p className={`text-xs mt-1 opacity-60 ${m.sender !== 'Client' ? 'text-right' : 'text-left'}`}>
                           {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </p>
                       </div>
@@ -510,17 +537,17 @@ export function JobDetailModal({
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
                 <div className="space-y-3">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
                     <Building2 className="w-3 h-3" /> Business Details
                   </p>
                   <div className="p-3 bg-white border border-slate-200 rounded-lg">
                     <p className="text-sm font-bold text-slate-900">{settings.name}</p>
                     <p className="text-xs text-slate-500">{settings.address}</p>
                   </div>
-                  <p className="text-[10px] text-slate-400 italic">Manage these details in the Settings tab.</p>
+                  <p className="text-xs text-slate-400 italic">Manage these details in the Settings tab.</p>
                 </div>
                 <div className="space-y-3">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
                     <ImageIcon className="w-3 h-3" /> Invoice Terms
                   </p>
                   <div className="p-3 bg-white border border-slate-200 rounded-lg">
@@ -530,7 +557,7 @@ export function JobDetailModal({
               </div>
 
               <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Invoice Line Items</p>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Invoice Line Items</p>
                 <textarea
                   value={invoiceNotes}
                   onChange={(e) => setInvoiceNotes(e.target.value)}
@@ -546,92 +573,11 @@ export function JobDetailModal({
       </div>
 
       {showInvoicePreview && (
-        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center z-[60] p-4 overflow-y-auto">
-          <div className="bg-white w-full max-w-3xl my-8 rounded-none shadow-2xl p-12 relative print:p-0 print:shadow-none print:my-0">
-            <button
-              onClick={() => setShowInvoicePreview(false)}
-              title="Close invoice preview"
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 print:hidden"
-            >
-              <X className="w-6 h-6" />
-            </button>
-
-            <div className="flex justify-between items-start mb-12">
-              <div>
-                {settings.logoUrl && (
-                  <img src={settings.logoUrl} alt="Logo" className="h-16 mb-4 object-contain" referrerPolicy="no-referrer" />
-                )}
-                <h2 className="text-2xl font-bold text-slate-900">{settings.name}</h2>
-                <p className="text-sm text-slate-500 max-w-xs">{settings.address}</p>
-                <p className="text-sm text-slate-500">{settings.email} | {settings.phone}</p>
-              </div>
-              <div className="text-right">
-                <h1 className="text-4xl font-light text-slate-300 uppercase tracking-widest mb-4">Invoice</h1>
-                <p className="text-sm font-bold text-slate-900">Invoice #: INV-{job.id.slice(0, 8).toUpperCase()}</p>
-                <p className="text-sm text-slate-500">Date: {new Date().toLocaleDateString()}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-12 mb-12">
-              <div>
-                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Bill To:</h4>
-                <p className="font-bold text-slate-900">{job.client}</p>
-                <p className="text-sm text-slate-500">Project: {job.title}</p>
-              </div>
-            </div>
-
-            <table className="w-full mb-12">
-              <thead>
-                <tr className="border-b-2 border-slate-900">
-                  <th className="text-left py-3 text-xs font-bold uppercase tracking-widest">Description</th>
-                  <th className="text-right py-3 text-xs font-bold uppercase tracking-widest">Amount</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {invoiceNotes.split('\n').filter(line => line.trim()).map((line, i) => (
-                  <tr key={i}>
-                    <td className="py-4 text-sm text-slate-700">{line}</td>
-                    <td className="py-4 text-right text-sm font-medium text-slate-900">
-                      {/* Simple logic to extract amount if present, else just show - */}
-                      {line.includes('$') ? line.split('$')[1] : '-'}
-                    </td>
-                  </tr>
-                ))}
-                {!invoiceNotes && (
-                  <tr>
-                    <td className="py-4 text-sm text-slate-700">{job.title} - Full Project</td>
-                    <td className="py-4 text-right text-sm font-medium text-slate-900">${job.amount?.toLocaleString()}</td>
-                  </tr>
-                )}
-              </tbody>
-              <tfoot>
-                <tr className="border-t-2 border-slate-900">
-                  <td className="py-6 text-right font-bold text-slate-900 uppercase tracking-widest">Total</td>
-                  <td className="py-6 text-right text-xl font-bold text-indigo-600">${job.amount?.toLocaleString()}</td>
-                </tr>
-              </tfoot>
-            </table>
-
-            <div className="border-t border-slate-100 pt-8">
-              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Notes & Terms:</h4>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                {settings.paymentTerms}
-                <br />
-                Thank you for your business!
-              </p>
-            </div>
-
-            <div className="mt-12 flex justify-center print:hidden">
-              <button
-                onClick={() => window.print()}
-                className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-800 transition-all shadow-xl"
-              >
-                <Printer className="w-5 h-5" />
-                Print Invoice
-              </button>
-            </div>
-          </div>
-        </div>
+        <InvoiceView
+          job={job}
+          settings={settings}
+          onClose={() => setShowInvoicePreview(false)}
+        />
       )}
     </div>
   );

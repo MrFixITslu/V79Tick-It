@@ -103,6 +103,7 @@ export interface Job {
   notes?: JobNote[];
   timeLogs?: TimeLog[];
   messages?: JobMessage[];
+  depositPaid?: boolean;
 }
 
 export type PagePermission = "dashboard" | "jobs" | "payroll" | "invoices" | "users" | "files" | "new-request";

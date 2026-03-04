@@ -75,7 +75,7 @@ export function GanttView({
                     Job Title & Client
                 </div>
                 <div className="flex-1 overflow-hidden relative min-w-[600px]">
-                    <div className="absolute inset-x-0 bottom-0 h-8 flex text-[10px] font-bold text-slate-400 uppercase tracking-widest border-t border-slate-100">
+                    <div className="absolute inset-x-0 bottom-0 h-8 flex text-xs font-bold text-slate-400 uppercase tracking-widest border-t border-slate-100">
                         {getMonthsInRange().map((month, i) => (
                             <div key={i} className="flex-1 border-r border-slate-200/50 px-2 py-1 truncate">
                                 {month.label}
@@ -102,12 +102,12 @@ export function GanttView({
                                 {/* Background Grid Lines Optional */}
                                 {/* Job Bar */}
                                 <div
-                                    className={`absolute h-8 rounded-md shadow-sm ${getStatusColor(job.status)} hover:ring-2 hover:ring-offset-1 hover:ring-indigo-500 transition-all cursor-pointer flex items-center px-2 overflow-hidden`}
+                                    className={`absolute h-8 rounded-md shadow-sm ${getStatusColor(job.status)} hover:ring-2 hover:ring-offset-1 hover:ring-indigo-500 transition-all cursor-pointer flex items-center px-2 overflow-hidden min-w-[40px]`}
                                     style={{ left, width }}
                                     onClick={() => onJobClick(job.id)}
                                     title={`${job.title} - ${job.status}`}
                                 >
-                                    <span className="text-[10px] font-bold text-white/90 truncate mix-blend-luminosity">
+                                    <span className="text-xs font-bold text-white/90 truncate mix-blend-luminosity">
                                         {job.status.replace("-", " ").toUpperCase()}
                                     </span>
                                 </div>

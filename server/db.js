@@ -21,7 +21,8 @@ db.exec(`
     invoiceNotes TEXT,
     assignedTo TEXT,
     clientEmail TEXT,
-    secureToken TEXT
+    secureToken TEXT,
+    depositPaid INTEGER DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS job_tags (
@@ -108,14 +109,20 @@ db.exec(`
   );
 `);
 
+try {
+  db.exec("ALTER TABLE jobs ADD COLUMN depositPaid INTEGER DEFAULT 0");
+} catch (e) {
+  // Column might already exist
+}
+
 // Check if seeding is needed
 const jobsCount = db.prepare('SELECT count(*) as count FROM jobs').get();
 if (jobsCount.count === 0) {
   console.log("Seeding database with initial data...");
 
   const insertJob = db.prepare(`
-    INSERT INTO jobs (id, title, client, description, status, createdAt, dueDate, amount, priority, invoiceNotes, assignedTo, clientEmail, secureToken)
-    VALUES (@id, @title, @client, @description, @status, @createdAt, @dueDate, @amount, @priority, @invoiceNotes, @assignedTo, @clientEmail, @secureToken)
+    INSERT INTO jobs (id, title, client, description, status, createdAt, dueDate, amount, priority, invoiceNotes, assignedTo, clientEmail, secureToken, depositPaid)
+    VALUES (@id, @title, @client, @description, @status, @createdAt, @dueDate, @amount, @priority, @invoiceNotes, @assignedTo, @clientEmail, @secureToken, @depositPaid)
   `);
 
   const insertActivityLog = db.prepare(`
@@ -146,7 +153,7 @@ if (jobsCount.count === 0) {
   const seedTransaction = db.transaction(() => {
     const job1Id = "1";
     insertJob.run({
-      id: job1Id, title: "Website Redesign", client: "Acme Corp", description: "Complete overhaul of the corporate website including new branding and e-commerce integration.", status: "request", createdAt: new Date(Date.now() - 86400000 * 2).toISOString(), dueDate: new Date(Date.now() + 86400000 * 10).toISOString(), amount: 15000, priority: "high", invoiceNotes: null, assignedTo: "Alice Smith", clientEmail: "client@acme.com", secureToken: uuidv4()
+      id: job1Id, title: "Website Redesign", client: "Acme Corp", description: "Complete overhaul of the corporate website including new branding and e-commerce integration.", status: "request", createdAt: new Date(Date.now() - 86400000 * 2).toISOString(), dueDate: new Date(Date.now() + 86400000 * 10).toISOString(), amount: 15000, priority: "high", invoiceNotes: null, assignedTo: "Alice Smith", clientEmail: "client@acme.com", secureToken: uuidv4(), depositPaid: 0
     });
     insertTag.run(job1Id, 'design');
     insertTag.run(job1Id, 'web');
@@ -154,7 +161,7 @@ if (jobsCount.count === 0) {
 
     const job2Id = "2";
     insertJob.run({
-      id: job2Id, title: "SEO Audit", client: "TechStart Inc", description: "Comprehensive SEO audit and keyword research for Q3 marketing push.", status: "estimation", createdAt: new Date(Date.now() - 86400000 * 5).toISOString(), dueDate: new Date(Date.now() + 86400000 * 3).toISOString(), amount: null, priority: "medium", invoiceNotes: null, assignedTo: "Bob Jones", clientEmail: "tech@techstart.com", secureToken: uuidv4()
+      id: job2Id, title: "SEO Audit", client: "TechStart Inc", description: "Comprehensive SEO audit and keyword research for Q3 marketing push.", status: "estimation", createdAt: new Date(Date.now() - 86400000 * 5).toISOString(), dueDate: new Date(Date.now() + 86400000 * 3).toISOString(), amount: null, priority: "medium", invoiceNotes: null, assignedTo: "Bob Jones", clientEmail: "tech@techstart.com", secureToken: uuidv4(), depositPaid: 0
     });
     insertTag.run(job2Id, 'marketing');
     insertTag.run(job2Id, 'seo');
@@ -163,7 +170,7 @@ if (jobsCount.count === 0) {
 
     const job3Id = "3";
     insertJob.run({
-      id: job3Id, title: "Mobile App MVP", client: "Fitness Plus", description: "React Native mobile app MVP with user authentication and basic workout tracking.", status: "in-progress", createdAt: new Date(Date.now() - 86400000 * 14).toISOString(), dueDate: new Date(Date.now() + 86400000 * 30).toISOString(), amount: 25000, priority: "high", invoiceNotes: null, assignedTo: "Charlie Brown", clientEmail: "fit@fitnessplus.com", secureToken: uuidv4()
+      id: job3Id, title: "Mobile App MVP", client: "Fitness Plus", description: "React Native mobile app MVP with user authentication and basic workout tracking.", status: "in-progress", createdAt: new Date(Date.now() - 86400000 * 14).toISOString(), dueDate: new Date(Date.now() + 86400000 * 30).toISOString(), amount: 25000, priority: "high", invoiceNotes: null, assignedTo: "Charlie Brown", clientEmail: "fit@fitnessplus.com", secureToken: uuidv4(), depositPaid: 1
     });
     insertTag.run(job3Id, 'mobile');
     insertTag.run(job3Id, 'app');
@@ -172,7 +179,7 @@ if (jobsCount.count === 0) {
 
     const job4Id = "4";
     insertJob.run({
-      id: job4Id, title: "Logo Design", client: "Fresh Bakery", description: "New logo design and brand guidelines for local bakery chain.", status: "review", createdAt: new Date(Date.now() - 86400000 * 20).toISOString(), dueDate: new Date(Date.now() - 86400000 * 1).toISOString(), amount: 2500, priority: "low", invoiceNotes: null, assignedTo: "Dana White", clientEmail: "bake@freshbakery.com", secureToken: uuidv4()
+      id: job4Id, title: "Logo Design", client: "Fresh Bakery", description: "New logo design and brand guidelines for local bakery chain.", status: "review", createdAt: new Date(Date.now() - 86400000 * 20).toISOString(), dueDate: new Date(Date.now() - 86400000 * 1).toISOString(), amount: 2500, priority: "low", invoiceNotes: null, assignedTo: "Dana White", clientEmail: "bake@freshbakery.com", secureToken: uuidv4(), depositPaid: 1
     });
     insertTag.run(job4Id, 'branding');
     insertTag.run(job4Id, 'logo');
@@ -180,7 +187,7 @@ if (jobsCount.count === 0) {
 
     const job5Id = "5";
     insertJob.run({
-      id: job5Id, title: "Q2 Marketing Campaign", client: "Global Retail", description: "Social media ad creatives and landing page design for Q2 campaign.", status: "invoiced", createdAt: new Date(Date.now() - 86400000 * 45).toISOString(), dueDate: null, amount: 8500, priority: "medium", invoiceNotes: "1. Project Delivery: Q2 Marketing Campaign - $8500", assignedTo: "Alice Smith", clientEmail: "global@retail.com", secureToken: uuidv4()
+      id: job5Id, title: "Q2 Marketing Campaign", client: "Global Retail", description: "Social media ad creatives and landing page design for Q2 campaign.", status: "invoiced", createdAt: new Date(Date.now() - 86400000 * 45).toISOString(), dueDate: null, amount: 8500, priority: "medium", invoiceNotes: "1. Project Delivery: Q2 Marketing Campaign - $8500", assignedTo: "Alice Smith", clientEmail: "global@retail.com", secureToken: uuidv4(), depositPaid: 1
     });
     insertTag.run(job5Id, 'marketing');
     insertTag.run(job5Id, 'ads');

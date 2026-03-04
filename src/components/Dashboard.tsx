@@ -19,7 +19,8 @@ export function Dashboard({ jobs }: { jobs: Job[] }) {
   const [hasMounted, setHasMounted] = React.useState(false);
 
   React.useEffect(() => {
-    setHasMounted(true);
+    const timer = setTimeout(() => setHasMounted(true), 100);
+    return () => clearTimeout(timer);
   }, []);
 
   const statusData = [
@@ -115,11 +116,11 @@ export function Dashboard({ jobs }: { jobs: Job[] }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm min-w-0">
           <h3 className="text-lg font-bold text-slate-900 mb-6">Jobs by Status</h3>
-          <div className="h-80">
+          <div className="h-80 min-h-[320px] relative w-full">
             {hasMounted && (
-              <ResponsiveContainer width="100%" height="100%" id="status-chart-container">
+              <ResponsiveContainer key="status-chart" width="100%" height="100%" id="status-chart-container" debounce={50}>
                 <PieChart id="status-pie-chart">
                   <Pie
                     data={statusData}
@@ -142,11 +143,11 @@ export function Dashboard({ jobs }: { jobs: Job[] }) {
           </div>
         </div>
 
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm min-w-0">
           <h3 className="text-lg font-bold text-slate-900 mb-6">Priority Distribution</h3>
-          <div className="h-80">
+          <div className="h-80 min-h-[320px] relative w-full">
             {hasMounted && (
-              <ResponsiveContainer width="100%" height="100%" id="priority-chart-container">
+              <ResponsiveContainer key="priority-chart" width="100%" height="100%" id="priority-chart-container" debounce={50}>
                 <BarChart data={priorityData} id="priority-bar-chart">
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="name" />

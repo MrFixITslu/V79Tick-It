@@ -81,7 +81,7 @@ export function UserManagement({
                 <td className="px-6 py-4">
                   <div className="flex flex-wrap gap-1">
                     {user.permissions.map((p) => (
-                      <span key={p} className="text-[10px] font-bold uppercase tracking-wider bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded">
+                      <span key={p} className="text-xs font-bold uppercase tracking-wider bg-indigo-50 text-indigo-600 px-1.5 py-0.5 rounded">
                         {p.replace("-", " ")}
                       </span>
                     ))}

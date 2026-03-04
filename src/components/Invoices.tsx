@@ -136,7 +136,7 @@ export function Invoices({
                 </td>
                 <td className="px-6 py-4">
                   <span
-                    className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full ${
+                    className={`text-xs font-bold uppercase tracking-widest px-2 py-1 rounded-full ${
                       job.status === "completed"
                         ? "bg-green-100 text-green-700"
                         : job.status === "paid"

@@ -200,7 +200,7 @@ export function Payroll({
                   </td>
                   <td className="px-6 py-4">
                     <span
-                      className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full ${
+                      className={`text-xs font-bold uppercase tracking-widest px-2 py-1 rounded-full ${
                         employee.status === "active"
                           ? "bg-green-100 text-green-700"
                           : "bg-slate-100 text-slate-500"
@@ -214,7 +214,7 @@ export function Payroll({
                       {employee.workerType === "hourly" && (
                         <button
                           onClick={() => handleCheckInOut(employee.id)}
-                          className={`p-2 rounded-lg transition-colors flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ${
+                          className={`p-2 rounded-lg transition-colors flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest ${
                             employee.isCheckedIn
                               ? "bg-red-50 text-red-600 hover:bg-red-100"
                               : "bg-green-50 text-green-600 hover:bg-green-100"
@@ -279,12 +279,12 @@ export function Payroll({
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                       {record.status === "paid" ? (
-                        <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-green-600 bg-green-50 px-2 py-1 rounded-full">
+                        <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-green-600 bg-green-50 px-2 py-1 rounded-full">
                           <CheckCircle2 className="w-3 h-3" />
                           Paid
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-yellow-600 bg-yellow-50 px-2 py-1 rounded-full">
+                        <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-yellow-600 bg-yellow-50 px-2 py-1 rounded-full">
                           <Clock className="w-3 h-3" />
                           Pending
                         </span>
