@@ -43,6 +43,14 @@ export interface JobNote {
   user: string;
 }
 
+export interface JobMessage {
+  id: string;
+  job_id: string;
+  sender: string;
+  content: string;
+  timestamp: string;
+}
+
 export type WorkerType = "salary" | "hourly" | "bi-weekly";
 
 export interface Employee {
@@ -88,10 +96,13 @@ export interface Job {
   priority: "low" | "medium" | "high";
   invoiceNotes?: string;
   assignedTo?: string;
+  clientEmail?: string;
+  secureToken?: string;
   tags?: string[];
   activityLog?: ActivityLogEntry[];
   notes?: JobNote[];
   timeLogs?: TimeLog[];
+  messages?: JobMessage[];
 }
 
 export type PagePermission = "dashboard" | "jobs" | "payroll" | "invoices" | "users" | "files" | "new-request";

@@ -11,46 +11,60 @@ interface JobRequestFormProps {
 export function JobRequestForm({ onSave, employees, className = "" }: JobRequestFormProps) {
   const [title, setTitle] = useState('');
   const [client, setClient] = useState('');
+  const [clientEmail, setClientEmail] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState<'low' | 'medium' | 'high'>('medium');
   const [amount, setAmount] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSave({
-      title,
-      client,
-      description,
-      status: "request",
-      priority,
-      amount: amount ? parseFloat(amount) : undefined,
-      dueDate: dueDate || undefined,
-      assignedTo: assignedTo || undefined,
-      activityLog: [
-        {
-          id: crypto.randomUUID(),
-          action: "Job request created",
-          timestamp: new Date().toISOString(),
-          user: "System",
-        },
-      ],
-    });
+    if (isSubmitting) return;
 
-    // Reset form
-    setTitle("");
-    setClient("");
-    setDescription("");
-    setPriority("medium");
-    setAmount("");
-    setDueDate("");
-    setAssignedTo("");
-    
-    // Show success state
-    setIsSubmitted(true);
-    setTimeout(() => setIsSubmitted(false), 3000);
+    setIsSubmitting(true);
+    try {
+      await onSave({
+        title,
+        client,
+        clientEmail: clientEmail || undefined,
+        description,
+        status: "request",
+        priority,
+        amount: amount ? parseFloat(amount) : undefined,
+        dueDate: dueDate || undefined,
+        assignedTo: assignedTo || undefined,
+        activityLog: [
+          {
+            id: crypto.randomUUID(),
+            action: "Job request created",
+            timestamp: new Date().toISOString(),
+            user: "System",
+          },
+        ],
+      });
+
+      // Reset form
+      setTitle("");
+      setClient("");
+      setClientEmail("");
+      setDescription("");
+      setPriority("medium");
+      setAmount("");
+      setDueDate("");
+      setAssignedTo("");
+
+      // Show success state
+      setIsSubmitted(true);
+      setTimeout(() => setIsSubmitted(false), 3000);
+    } catch (error) {
+      console.error("Submission failed:", error);
+      alert("Failed to submit request. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (isSubmitted) {
@@ -61,7 +75,7 @@ export function JobRequestForm({ onSave, employees, className = "" }: JobRequest
         </div>
         <h3 className="text-xl font-bold text-emerald-900 mb-2">Request Submitted!</h3>
         <p className="text-emerald-700">The new job request has been added to the pipeline.</p>
-        <button 
+        <button
           onClick={() => setIsSubmitted(false)}
           className="mt-6 text-emerald-600 font-medium hover:underline"
         >
@@ -77,7 +91,7 @@ export function JobRequestForm({ onSave, employees, className = "" }: JobRequest
         <h3 className="text-xl font-bold text-slate-900">New Job Request</h3>
         <p className="text-slate-500 text-sm mt-1">Fill out the details below to start a new job tracking process.</p>
       </div>
-      
+
       <form onSubmit={handleSubmit} className="p-8 space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">
@@ -91,7 +105,7 @@ export function JobRequestForm({ onSave, employees, className = "" }: JobRequest
               className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
             />
           </div>
-          
+
           <div className="space-y-2">
             <label className="text-sm font-semibold text-slate-700">Client Name</label>
             <input
@@ -100,9 +114,22 @@ export function JobRequestForm({ onSave, employees, className = "" }: JobRequest
               value={client}
               onChange={(e) => setClient(e.target.value)}
               placeholder="e.g. Global Dynamics"
+              title="Enter the client name"
               className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
             />
           </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-sm font-semibold text-slate-700">Client Email (for portal access)</label>
+          <input
+            type="email"
+            value={clientEmail}
+            onChange={(e) => setClientEmail(e.target.value)}
+            placeholder="e.g. client@example.com"
+            title="Enter the client's email for portal access"
+            className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+          />
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -114,18 +141,17 @@ export function JobRequestForm({ onSave, employees, className = "" }: JobRequest
                   key={p}
                   type="button"
                   onClick={() => setPriority(p)}
-                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-all ${
-                    priority === p 
-                      ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' 
-                      : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
-                  }`}
+                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-all ${priority === p
+                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm'
+                    : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'
+                    }`}
                 >
                   {p.charAt(0).toUpperCase() + p.slice(1)}
                 </button>
               ))}
             </div>
           </div>
-          
+
           <div className="space-y-2">
             <label className="text-sm font-semibold text-slate-700">Estimated Budget (Optional)</label>
             <div className="relative">
@@ -135,6 +161,7 @@ export function JobRequestForm({ onSave, employees, className = "" }: JobRequest
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 placeholder="0.00"
+                title="Estimated budget for this job"
                 className="w-full pl-8 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
               />
             </div>
@@ -149,6 +176,7 @@ export function JobRequestForm({ onSave, employees, className = "" }: JobRequest
             <select
               value={assignedTo}
               onChange={(e) => setAssignedTo(e.target.value)}
+              title="Assign this job to an employee"
               className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all bg-white"
             >
               <option value="">Unassigned</option>
@@ -195,10 +223,20 @@ export function JobRequestForm({ onSave, employees, className = "" }: JobRequest
           </div>
           <button
             type="submit"
-            className="flex items-center gap-2 px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all active:scale-95"
+            disabled={isSubmitting}
+            className={`flex items-center gap-2 px-8 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-200 transition-all active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed`}
           >
-            <Send className="w-4 h-4" />
-            Submit Request
+            {isSubmitting ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                Submit Request
+              </>
+            )}
           </button>
         </div>
       </form>

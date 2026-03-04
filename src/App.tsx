@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Search, Bell } from "lucide-react";
 import { JobBoard } from "./components/JobBoard";
 import { Sidebar } from "./components/Sidebar";
@@ -10,229 +10,89 @@ import { FileRepository } from "./components/FileRepository";
 import { Invoices } from "./components/Invoices";
 import { Settings, BusinessSettings } from "./components/Settings";
 import { ClientPortal } from "./components/ClientPortal";
+import { Clients } from "./components/Clients";
 import { Job, Employee, PayrollRecord, AppUser, FileItem } from "./types";
-
-const initialJobs: Job[] = [
-  {
-    id: "1",
-    title: "Website Redesign",
-    client: "Acme Corp",
-    description:
-      "Complete overhaul of the corporate website including new branding and e-commerce integration.",
-    status: "request",
-    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-    dueDate: new Date(Date.now() + 86400000 * 10).toISOString(),
-    amount: 15000,
-    priority: "high",
-    assignedTo: "Alice Smith",
-    tags: ["design", "web"],
-    activityLog: [
-      {
-        id: "l1",
-        action: "Job request created",
-        timestamp: new Date(Date.now() - 86400000 * 2).toISOString(),
-        user: "System",
-      },
-    ],
-  },
-  {
-    id: "2",
-    title: "SEO Audit",
-    client: "TechStart Inc",
-    description:
-      "Comprehensive SEO audit and keyword research for Q3 marketing push.",
-    status: "estimation",
-    createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
-    dueDate: new Date(Date.now() + 86400000 * 3).toISOString(),
-    priority: "medium",
-    assignedTo: "Bob Jones",
-    tags: ["marketing", "seo"],
-    activityLog: [
-      {
-        id: "l2",
-        action: "Job request created",
-        timestamp: new Date(Date.now() - 86400000 * 5).toISOString(),
-        user: "System",
-      },
-      {
-        id: "l3",
-        action: "Moved from request to estimation",
-        timestamp: new Date(Date.now() - 86400000 * 4).toISOString(),
-        user: "Alice Smith",
-      },
-    ],
-  },
-  {
-    id: "3",
-    title: "Mobile App MVP",
-    client: "Fitness Plus",
-    description:
-      "React Native mobile app MVP with user authentication and basic workout tracking.",
-    status: "in-progress",
-    createdAt: new Date(Date.now() - 86400000 * 14).toISOString(),
-    dueDate: new Date(Date.now() + 86400000 * 30).toISOString(),
-    amount: 25000,
-    priority: "high",
-    assignedTo: "Charlie Brown",
-    tags: ["mobile", "app"],
-    activityLog: [
-      {
-        id: "l4",
-        action: "Job request created",
-        timestamp: new Date(Date.now() - 86400000 * 14).toISOString(),
-        user: "System",
-      },
-      {
-        id: "l5",
-        action: "Moved from request to in-progress",
-        timestamp: new Date(Date.now() - 86400000 * 12).toISOString(),
-        user: "Bob Jones",
-      },
-    ],
-  },
-  {
-    id: "4",
-    title: "Logo Design",
-    client: "Fresh Bakery",
-    description: "New logo design and brand guidelines for local bakery chain.",
-    status: "review",
-    createdAt: new Date(Date.now() - 86400000 * 20).toISOString(),
-    dueDate: new Date(Date.now() - 86400000 * 1).toISOString(),
-    amount: 2500,
-    priority: "low",
-    assignedTo: "Dana White",
-    tags: ["branding", "logo"],
-    activityLog: [
-      {
-        id: "l6",
-        action: "Job request created",
-        timestamp: new Date(Date.now() - 86400000 * 20).toISOString(),
-        user: "System",
-      },
-    ],
-  },
-  {
-    id: "5",
-    title: "Q2 Marketing Campaign",
-    client: "Global Retail",
-    description:
-      "Social media ad creatives and landing page design for Q2 campaign.",
-    status: "invoiced",
-    createdAt: new Date(Date.now() - 86400000 * 45).toISOString(),
-    amount: 8500,
-    priority: "medium",
-    assignedTo: "Alice Smith",
-    tags: ["marketing", "ads"],
-    activityLog: [
-      {
-        id: "l7",
-        action: "Job request created",
-        timestamp: new Date(Date.now() - 86400000 * 45).toISOString(),
-        user: "System",
-      },
-    ],
-  },
-];
-
-const initialEmployees: Employee[] = [
-  {
-    id: "e1",
-    name: "Alice Smith",
-    role: "Senior Designer",
-    salary: 5000,
-    workerType: "salary",
-    paymentMethod: "Bank Transfer",
-    status: "active",
-  },
-  {
-    id: "e2",
-    name: "Bob Jones",
-    role: "Project Manager",
-    salary: 4500,
-    workerType: "salary",
-    paymentMethod: "Bank Transfer",
-    status: "active",
-  },
-  {
-    id: "e3",
-    name: "Charlie Brown",
-    role: "Developer",
-    salary: 6000,
-    workerType: "salary",
-    paymentMethod: "PayPal",
-    status: "active",
-  },
-];
-
-const initialUsers: AppUser[] = [
-  {
-    id: "u1",
-    name: "John Doe",
-    email: "john@example.com",
-    role: "Admin",
-    permissions: ["dashboard", "jobs", "new-request", "payroll", "invoices", "users", "files"],
-  },
-  {
-    id: "u2",
-    name: "Alice Smith",
-    email: "alice@example.com",
-    role: "Manager",
-    permissions: ["dashboard", "jobs", "new-request", "files"],
-  },
-];
-
-const initialFiles: FileItem[] = [
-  {
-    id: "f1",
-    name: "Brand_Guidelines_2024.pdf",
-    size: 2500000,
-    type: "application/pdf",
-    uploadedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-    uploadedBy: "John Doe",
-  },
-  {
-    id: "f2",
-    name: "Logo_Assets.zip",
-    size: 15000000,
-    type: "application/zip",
-    uploadedAt: new Date(Date.now() - 86400000 * 5).toISOString(),
-    uploadedBy: "Alice Smith",
-  },
-];
-
-const initialSettings: BusinessSettings = {
-  name: "Auvic Solutions",
-  address: "123 Creative Plaza, Design District, NY 10001",
-  email: "billing@auvic.com",
-  phone: "+1 (555) 000-1234",
-  logoUrl: "https://picsum.photos/200/100?random=1",
-  paymentTerms: "Please make payment within 30 days of receiving this invoice.",
-  currency: "USD",
-  taxRate: 0,
-};
 
 export default function App() {
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [jobs, setJobs] = useState<Job[]>(initialJobs);
-  const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
-  const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
-  const [users, setUsers] = useState<AppUser[]>(initialUsers);
-  const [files, setFiles] = useState<FileItem[]>(initialFiles);
-  const [settings, setSettings] = useState<BusinessSettings>(initialSettings);
-  const [clientPortalJobId, setClientPortalJobId] = useState<string | null>(null);
 
-  React.useEffect(() => {
-    // Check for magic link in URL (e.g. ?client_portal=job_123)
-    const params = new URLSearchParams(window.location.search);
-    const portalJobId = params.get("client_portal");
-    if (portalJobId) {
-      setClientPortalJobId(portalJobId);
+  // Check for magic link in URL early - only once on mount
+  const params = new URLSearchParams(window.location.search);
+  const initialToken = params.get("token");
+
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
+  const [users, setUsers] = useState<AppUser[]>([]);
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [settings, setSettings] = useState<BusinessSettings | null>(null);
+  const [clientPortalToken, setClientPortalToken] = useState<string | null>(initialToken);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchData = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const [jobsRes, employeesRes, settingsRes] = await Promise.all([
+        fetch("/api/jobs").then(res => {
+          if (!res.ok) throw new Error("Failed to fetch jobs");
+          return res.json();
+        }),
+        fetch("/api/employees").then(res => {
+          if (!res.ok) throw new Error("Failed to fetch employees");
+          return res.json();
+        }),
+        fetch("/api/settings").then(res => {
+          if (!res.ok) throw new Error("Failed to fetch settings");
+          return res.json();
+        })
+      ]);
+
+      setJobs(jobsRes);
+      setEmployees(employeesRes);
+      setSettings(settingsRes);
+    } catch (err: any) {
+      console.error("Error fetching data:", err);
+      setError(err.message || "Failed to load application data. Please check your connection.");
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  useEffect(() => {
+    fetchData();
   }, []);
 
-  if (clientPortalJobId) {
-    const job = jobs.find((j) => j.id === clientPortalJobId) || null;
-    return <ClientPortal job={job} settings={settings} />;
+  if (clientPortalToken) {
+    return <ClientPortal token={clientPortalToken} />;
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-slate-50 p-8 text-center">
+        <div className="bg-red-100 text-red-600 rounded-full p-4 mb-4">
+          <Search className="w-8 h-8" />
+        </div>
+        <h2 className="text-xl font-bold text-slate-900 mb-2">Something went wrong</h2>
+        <p className="text-slate-500 mb-6 max-w-md">{error}</p>
+        <button
+          onClick={() => fetchData()}
+          className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-semibold hover:bg-indigo-700 transition-all"
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  if (isLoading || !settings) {
+    return (
+      <div className="flex h-screen flex-col items-center justify-center bg-slate-50 text-slate-400 gap-4">
+        <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+        <p className="font-medium">Loading Auvic Solutions...</p>
+      </div>
+    );
   }
 
   return (
@@ -252,8 +112,9 @@ export default function App() {
             />
           </div>
           <div className="flex items-center gap-4">
-            <button className="p-2 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 transition-colors">
-              <Bell className="w-5 h-5" />
+            <button type="button" className="p-2 text-slate-400 hover:text-slate-600 relative" title="View notifications" aria-label="View notifications">
+              <Bell className="w-6 h-6" />
+              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-slate-50"></span>
             </button>
             <div className="w-8 h-8 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-semibold text-sm">
               JD
@@ -297,18 +158,31 @@ export default function App() {
           {activeTab === "settings" && (
             <Settings settings={settings} setSettings={setSettings} />
           )}
+          {activeTab === "clients" && <Clients />}
           {activeTab === "new-request" && (
             <div className="max-w-4xl mx-auto">
               <JobRequestForm
                 employees={employees}
-                onSave={(jobData) => {
-                  const newJob: Job = {
-                    ...jobData,
-                    id: crypto.randomUUID(),
-                    createdAt: new Date().toISOString(),
-                  };
-                  setJobs([newJob, ...jobs]);
-                  // Optionally switch to jobs tab after a delay or keep on form
+                onSave={async (jobData) => {
+                  try {
+                    const newId = crypto.randomUUID();
+                    const response = await fetch('/api/jobs', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        ...jobData,
+                        id: newId,
+                        createdAt: new Date().toISOString()
+                      })
+                    });
+                    if (response.ok) {
+                      const newJob = await response.json();
+                      setJobs([newJob, ...jobs]);
+                      setActiveTab("jobs");
+                    }
+                  } catch (error) {
+                    console.error("Error creating job:", error);
+                  }
                 }}
               />
             </div>
@@ -316,7 +190,12 @@ export default function App() {
           {activeTab !== "jobs" &&
             activeTab !== "new-request" &&
             activeTab !== "invoices" &&
-            activeTab !== "settings" && (
+            activeTab !== "settings" &&
+            activeTab !== "dashboard" &&
+            activeTab !== "payroll" &&
+            activeTab !== "users" &&
+            activeTab !== "files" &&
+            activeTab !== "clients" && (
               <div className="flex items-center justify-center h-full text-slate-400">
                 {activeTab} content coming soon
               </div>

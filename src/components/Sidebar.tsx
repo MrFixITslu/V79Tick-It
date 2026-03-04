@@ -1,7 +1,7 @@
 import React from "react";
 import {
   LayoutDashboard,
-  Briefcase,
+  ClipboardList,
   FileText,
   Settings,
   PlusCircle,
@@ -19,11 +19,13 @@ export function Sidebar({
 }) {
   return (
     <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
-      <div className="p-6 border-b border-slate-100">
-        <h1 className="text-2xl font-bold text-indigo-600 flex items-center gap-2">
-          <Briefcase className="w-6 h-6" />
-          Auvic
-        </h1>
+      <div className="p-6 border-b border-slate-100 flex items-center gap-3">
+        <img
+          src="/assets/auvic_logo.png"
+          alt="Auvic Solutions"
+          className="h-10 object-contain shrink-0"
+        />
+        <span className="text-lg font-bold text-slate-900 leading-tight">Auvic<br /><span className="text-xs font-medium text-slate-400 tracking-wide uppercase">Solutions</span></span>
       </div>
       <nav className="flex-1 p-4 space-y-1">
         <NavItem
@@ -39,10 +41,16 @@ export function Sidebar({
           onClick={() => setActiveTab("dashboard")}
         />
         <NavItem
-          icon={<Briefcase />}
+          icon={<ClipboardList />}
           label="Jobs"
           active={activeTab === "jobs"}
           onClick={() => setActiveTab("jobs")}
+        />
+        <NavItem
+          icon={<Users />}
+          label="Clients"
+          active={activeTab === "clients"}
+          onClick={() => setActiveTab("clients")}
         />
         <NavItem
           icon={<CreditCard />}
@@ -107,8 +115,8 @@ function NavItem({
     <button
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${active
-          ? "bg-indigo-50 text-indigo-600"
-          : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+        ? "bg-indigo-50 text-indigo-600"
+        : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
         }`}
     >
       {React.cloneElement(icon as React.ReactElement, { className: "w-5 h-5" })}

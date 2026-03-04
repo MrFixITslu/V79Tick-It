@@ -20,63 +20,116 @@ export function JobBoard({
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"kanban" | "timeline">("kanban");
+  const [jobsMoving, setJobsMoving] = useState<Set<string>>(new Set());
 
-  const moveJob = (jobId: string, newStatus: JobStatus) => {
-    setJobs(
-      jobs.map((job) => {
-        if (job.id === jobId) {
-          const newLog: ActivityLogEntry = {
-            id: crypto.randomUUID(),
-            action: `Moved from ${job.status} to ${newStatus}`,
-            timestamp: new Date().toISOString(),
-            user: "System Workflow",
-          };
 
-          let additionalUpdates: Partial<Job> = {};
+  const moveJob = async (jobId: string, newStatus: JobStatus) => {
+    if (jobsMoving.has(jobId)) return;
 
-          // Smart Workflow: Auto-generate invoice template when moved to Invoiced
-          if (newStatus === "invoiced" && !job.invoiceNotes) {
-            const timeLoggedHours = job.timeLogs?.reduce((total, log) => {
-              if (!log.endTime) return total;
-              const start = new Date(log.startTime).getTime();
-              const end = new Date(log.endTime).getTime();
-              return total + (end - start) / (1000 * 60 * 60);
-            }, 0) || 0;
+    const job = jobs.find(j => j.id === jobId);
+    if (!job) return;
 
-            let description = `1. Project Delivery: ${job.title} - $${job.amount || 0}\n`;
-            if (timeLoggedHours > 0) {
-              description += `2. Hourly Labor: ${timeLoggedHours.toFixed(1)} hrs\n`;
-            }
-            additionalUpdates.invoiceNotes = description;
+    setJobsMoving(prev => new Set(prev).add(jobId));
 
-            newLog.action = `Moved to Invoiced + Auto-drafted invoice`;
+
+    const newLog: ActivityLogEntry = {
+      id: crypto.randomUUID(),
+      action: `Moved from ${job.status} to ${newStatus}`,
+      timestamp: new Date().toISOString(),
+      user: "System Workflow",
+    };
+
+    let additionalUpdates: Partial<Job> = {};
+
+    // Smart Workflow: Auto-generate invoice template when moved to Invoiced
+    if (newStatus === "invoiced" && !job.invoiceNotes) {
+      const timeLoggedHours = job.timeLogs?.reduce((total, log) => {
+        if (!log.endTime) return total;
+        const start = new Date(log.startTime).getTime();
+        const end = new Date(log.endTime).getTime();
+        return total + (end - start) / (1000 * 60 * 60);
+      }, 0) || 0;
+
+      let description = `1. Project Delivery: ${job.title} - $${job.amount || 0}\n`;
+      if (timeLoggedHours > 0) {
+        description += `2. Hourly Labor: ${timeLoggedHours.toFixed(1)} hrs\n`;
+      }
+      additionalUpdates.invoiceNotes = description;
+
+      newLog.action = `Moved to Invoiced + Auto-drafted invoice`;
+    }
+
+    // Smart Workflow: Auto-generate estimate when moved to Estimation
+    if (newStatus === "estimation" && !job.amount) {
+      additionalUpdates.amount = 500; // Default estimate
+      newLog.action = `Moved to Estimation + Generated $500 baseline estimate`;
+    }
+
+    const updatedJob = {
+      ...job,
+      ...additionalUpdates,
+      status: newStatus,
+      activityLog: [newLog], // We only send the new log to the backend, it appends it.
+    };
+
+    try {
+      const response = await fetch(`/api/jobs/${jobId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedJob)
+      });
+
+      if (!response.ok) throw new Error("Failed to update job status");
+
+      // Optimistically update UI
+      setJobs(
+        jobs.map(j => {
+          if (j.id === jobId) {
+            return {
+              ...j,
+              ...additionalUpdates,
+              status: newStatus,
+              activityLog: [...(j.activityLog || []), newLog]
+            };
           }
-
-          // Smart Workflow: Auto-generate estimate when moved to Estimation
-          if (newStatus === "estimation" && !job.amount) {
-            additionalUpdates.amount = 500; // Default estimate
-            newLog.action = `Moved to Estimation + Generated $500 baseline estimate`;
-          }
-
-          return {
-            ...job,
-            ...additionalUpdates,
-            status: newStatus,
-            activityLog: [...(job.activityLog || []), newLog],
-          };
-        }
-        return job;
-      }),
-    );
+          return j;
+        })
+      );
+    } catch (error) {
+      console.error("Failed to move job:", error);
+      alert("Failed to update status. The server might be busy. Please try again.");
+    } finally {
+      setJobsMoving(prev => {
+        const next = new Set(prev);
+        next.delete(jobId);
+        return next;
+      });
+    }
   };
 
-  const handleSaveNewJob = (jobData: Omit<Job, "id" | "createdAt">) => {
+  const handleSaveNewJob = async (jobData: Omit<Job, "id" | "createdAt">) => {
     const newJob: Job = {
       ...jobData,
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
     };
-    setJobs([...jobs, newJob]);
+
+    try {
+      const response = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(newJob)
+      });
+
+      if (!response.ok) throw new Error("Failed to save job");
+
+      const savedJob = await response.json();
+      setJobs([savedJob, ...jobs]);
+      setIsNewModalOpen(false); // Close modal on success
+    } catch (error) {
+      console.error("Failed to create job:", error);
+      alert("Failed to create job. Please try again.");
+    }
   };
 
   const selectedJob = jobs.find((j) => j.id === selectedJobId);
@@ -90,31 +143,34 @@ export function JobBoard({
             Track and manage jobs from request to completion.
           </p>
         </div>
-      </div>
-      <div className="flex items-center gap-3">
-        <div className="bg-slate-200 p-1 rounded-lg flex items-center text-sm font-medium">
+        <div className="flex items-center gap-3">
+          <div className="bg-slate-200 p-1 rounded-lg flex items-center text-sm font-medium">
+            <button
+              type="button"
+              onClick={() => setViewMode("kanban")}
+              className={`px-3 py-1.5 rounded-md transition-all ${viewMode === "kanban" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                }`}
+            >
+              Kanban
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("timeline")}
+              className={`px-3 py-1.5 rounded-md transition-all ${viewMode === "timeline" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                }`}
+            >
+              Timeline
+            </button>
+          </div>
           <button
-            onClick={() => setViewMode("kanban")}
-            className={`px-3 py-1.5 rounded-md transition-all ${viewMode === "kanban" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
-              }`}
+            type="button"
+            onClick={() => setIsNewModalOpen(true)}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm"
           >
-            Kanban
-          </button>
-          <button
-            onClick={() => setViewMode("timeline")}
-            className={`px-3 py-1.5 rounded-md transition-all ${viewMode === "timeline" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
-              }`}
-          >
-            Timeline
+            <Plus className="w-4 h-4" />
+            New Job
           </button>
         </div>
-        <button
-          onClick={() => setIsNewModalOpen(true)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-sm"
-        >
-          <Plus className="w-4 h-4" />
-          New Job
-        </button>
       </div>
 
       {viewMode === "kanban" ? (
@@ -130,7 +186,7 @@ export function JobBoard({
                     {jobs.filter((j) => j.status === col.id).length}
                   </span>
                 </div>
-                <button className="text-slate-400 hover:text-slate-600">
+                <button className="text-slate-400 hover:text-slate-600" title="More options">
                   <MoreHorizontal className="w-5 h-5" />
                 </button>
               </div>
@@ -142,6 +198,7 @@ export function JobBoard({
                     <JobCard
                       key={job.id}
                       job={job}
+                      isMoving={jobsMoving.has(job.id)}
                       moveJob={moveJob}
                       onClick={() => setSelectedJobId(job.id)}
                     />
@@ -165,7 +222,9 @@ export function JobBoard({
       <JobModal
         isOpen={isNewModalOpen}
         onClose={() => setIsNewModalOpen(false)}
-        onSave={handleSaveNewJob}
+        onSave={(jobData) => {
+          handleSaveNewJob(jobData);
+        }}
         employees={employees}
       />
 
@@ -188,10 +247,12 @@ export function JobBoard({
 
 const JobCard: React.FC<{
   job: Job;
+  isMoving?: boolean;
   moveJob: (id: string, status: JobStatus) => void;
   onClick: () => void;
-}> = ({ job, moveJob, onClick }) => {
+}> = ({ job, isMoving, moveJob, onClick }) => {
   const currentIndex = COLUMNS.findIndex((c) => c.id === job.status);
+
   const prevStatus = currentIndex > 0 ? COLUMNS[currentIndex - 1].id : null;
   const nextStatus =
     currentIndex < COLUMNS.length - 1 ? COLUMNS[currentIndex + 1].id : null;
@@ -248,10 +309,10 @@ const JobCard: React.FC<{
 
       <div className="flex items-center justify-between mt-auto pt-3 border-t border-slate-100">
         <div className="flex items-center gap-3 text-slate-400">
-          {job.amount !== undefined && (
+          {job.amount != null && (
             <div className="flex items-center gap-1 text-xs font-medium text-slate-600">
               <DollarSign className="w-3.5 h-3.5" />
-              {job.amount.toLocaleString()}
+              {Number(job.amount).toLocaleString()}
             </div>
           )}
           {job.assignedTo && (
@@ -267,6 +328,7 @@ const JobCard: React.FC<{
         <div className="flex items-center gap-1">
           {prevStatus && (
             <button
+              type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 moveJob(job.id, prevStatus);
@@ -280,14 +342,22 @@ const JobCard: React.FC<{
 
           {nextStatus && (
             <button
+              type="button"
+              disabled={isMoving}
               onClick={(e) => {
                 e.stopPropagation();
                 moveJob(job.id, nextStatus);
               }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity bg-indigo-50 text-indigo-600 hover:bg-indigo-100 p-1.5 rounded-md flex items-center gap-1 text-xs font-medium"
+              className={`opacity-0 group-hover:opacity-100 transition-opacity bg-indigo-50 text-indigo-600 hover:bg-indigo-100 p-1.5 rounded-md flex items-center gap-1 text-xs font-medium disabled:opacity-50`}
               title={`Move to ${COLUMNS.find((c) => c.id === nextStatus)?.label}`}
             >
-              Advance <ArrowRight className="w-3 h-3" />
+              {isMoving ? (
+                <div className="w-3 h-3 border-2 border-indigo-600/30 border-t-indigo-600 rounded-full animate-spin" />
+              ) : (
+                <>
+                  Advance <ArrowRight className="w-3 h-3" />
+                </>
+              )}
             </button>
           )}
         </div>

@@ -39,12 +39,80 @@ export function JobDetailModal({
   const [newNote, setNewNote] = useState("");
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [activeTimerStart, setActiveTimerStart] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"activity" | "notes" | "chat">("activity");
+  const [messages, setMessages] = useState<any[]>([]);
+  const [newChatMessage, setNewChatMessage] = useState("");
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+  const chatEndRef = React.useRef<HTMLDivElement>(null);
+
 
   // For Demo purposes, hardcode current employee
   const currentEmployeeId = employees[0]?.id || "e1";
+  const currentUser = employees[0]?.name || "Team";
+
+  React.useEffect(() => {
+    const fetchMessages = async () => {
+      try {
+        const res = await fetch(`/api/jobs/${job.id}/messages`);
+        if (res.ok) setMessages(await res.json());
+      } catch (e) {
+        console.error("Fetch messages error:", e);
+      }
+    };
+
+    fetchMessages();
+    const poll = setInterval(fetchMessages, 5000);
+    return () => clearInterval(poll);
+  }, [job.id]);
+
+  React.useEffect(() => {
+    if (activeTab === "chat") {
+      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, activeTab]);
+
+  const handleSendChatMessage = async () => {
+    if (!newChatMessage.trim() || isSendingMessage) return;
+    setIsSendingMessage(true);
+    try {
+      const res = await fetch(`/api/jobs/${job.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sender: currentUser,
+          content: newChatMessage.trim()
+        })
+      });
+      if (res.ok) {
+        const sent = await res.json();
+        setMessages(prev => [...prev, sent]);
+        setNewChatMessage("");
+      }
+    } catch (e) {
+      console.error("Send message error:", e);
+    } finally {
+      setIsSendingMessage(false);
+    }
+  };
+
+
+  const updateJobInDb = async (updatedJob: Job) => {
+    try {
+      const response = await fetch(`/api/jobs/${job.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedJob)
+      });
+      if (!response.ok) throw new Error("Failed to update job");
+      onUpdate(updatedJob);
+    } catch (error) {
+      console.error("Error updating job:", error);
+      alert("Failed to save changes. Please try again.");
+    }
+  };
 
   const handleSaveNotes = () => {
-    onUpdate({ ...job, invoiceNotes });
+    updateJobInDb({ ...job, invoiceNotes });
   };
 
   const handleAddNote = () => {
@@ -55,7 +123,7 @@ export function JobDetailModal({
       timestamp: new Date().toISOString(),
       user: "Current User",
     };
-    onUpdate({ ...job, notes: [...(job.notes || []), note] });
+    updateJobInDb({ ...job, notes: [...(job.notes || []), note] });
     setNewNote("");
   };
 
@@ -71,7 +139,7 @@ export function JobDetailModal({
         endTime: sessionEnd,
       };
 
-      onUpdate({
+      updateJobInDb({
         ...job,
         timeLogs: [...(job.timeLogs || []), newTimeLog],
       });
@@ -82,6 +150,33 @@ export function JobDetailModal({
       // Start timer logic
       setIsTimerRunning(true);
       setActiveTimerStart(new Date().toISOString());
+    }
+  };
+
+  const [isSendingLink, setIsSendingLink] = useState(false);
+  const [sendResult, setSendResult] = useState<"idle" | "success" | "error">("idle");
+
+  const handleSendLink = async () => {
+    if (!job.clientEmail) {
+      alert("Please add a client email address to send the link.");
+      return;
+    }
+
+    setIsSendingLink(true);
+    setSendResult("idle");
+    try {
+      const response = await fetch(`/api/jobs/${job.id}/send-portal`, {
+        method: "POST"
+      });
+      if (!response.ok) throw new Error("Failed to send");
+      setSendResult("success");
+      setTimeout(() => setSendResult("idle"), 3000);
+    } catch (error) {
+      console.error("Error sending link:", error);
+      setSendResult("error");
+      setTimeout(() => setSendResult("idle"), 3000);
+    } finally {
+      setIsSendingLink(false);
     }
   };
 
@@ -100,36 +195,68 @@ export function JobDetailModal({
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <h3 className="text-xl font-bold text-slate-900">{job.title}</h3>
             <span
               className={`text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-md ${job.priority === "high"
-                  ? "bg-red-100 text-red-700"
-                  : job.priority === "medium"
-                    ? "bg-yellow-100 text-yellow-700"
-                    : "bg-slate-200 text-slate-700"
+                ? "bg-red-100 text-red-700"
+                : job.priority === "medium"
+                  ? "bg-yellow-100 text-yellow-700"
+                  : "bg-slate-200 text-slate-700"
                 }`}
             >
               {job.priority}
             </span>
           </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-200 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleSendLink}
+              disabled={isSendingLink || !job.clientEmail || sendResult === "success"}
+              className={`text-xs font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${sendResult === "success"
+                ? "bg-emerald-100 text-emerald-700"
+                : sendResult === "error"
+                  ? "bg-red-100 text-red-700"
+                  : job.clientEmail
+                    ? "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
+                    : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                }`}
+              title={!job.clientEmail ? "Client email required" : "Email client portal link"}
+            >
+              {isSendingLink ? (
+                <span className="animate-spin w-3 h-3 border-2 border-indigo-700/30 border-t-indigo-700 rounded-full" />
+              ) : sendResult === "success" ? (
+                <CheckCircle2 className="w-3.5 h-3.5" />
+              ) : (
+                <Send className="w-3.5 h-3.5" />
+              )}
+              {sendResult === "success" ? "Sent!" : sendResult === "error" ? "Failed" : "Send Portal Link"}
+            </button>
+            <button
+              onClick={onClose}
+              title="Close job details"
+              className="text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-200 transition-colors ml-2"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
-                <User className="w-3 h-3" /> Client
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-2">
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <User className="w-3 h-3" /> Client Info
               </p>
               <p className="font-semibold text-slate-900 truncate">
                 {job.client}
               </p>
+              <input
+                type="email"
+                placeholder="Client Email"
+                value={job.clientEmail || ""}
+                onChange={(e) => updateJobInDb({ ...job, clientEmail: e.target.value })}
+                className="text-[10px] w-full px-2 py-1 bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
+              />
             </div>
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
@@ -157,8 +284,8 @@ export function JobDetailModal({
                   <button
                     onClick={handleToggleTimer}
                     className={`p-1.5 rounded-full flex items-center gap-1 text-[10px] font-bold uppercase transition-all shadow-sm ${isTimerRunning
-                        ? "bg-red-100 text-red-700 hover:bg-red-200"
-                        : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
+                      ? "bg-red-100 text-red-700 hover:bg-red-200"
+                      : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
                       }`}
                   >
                     {isTimerRunning ? (
@@ -195,7 +322,7 @@ export function JobDetailModal({
               <select
                 value={job.assignedTo || ""}
                 onChange={(e) =>
-                  onUpdate({ ...job, assignedTo: e.target.value })
+                  updateJobInDb({ ...job, assignedTo: e.target.value })
                 }
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-white"
               >
@@ -215,7 +342,7 @@ export function JobDetailModal({
                 type="text"
                 value={job.tags?.join(", ") || ""}
                 onChange={(e) =>
-                  onUpdate({
+                  updateJobInDb({
                     ...job,
                     tags: e.target.value.split(",").map((t) => t.trim()),
                   })
@@ -235,65 +362,133 @@ export function JobDetailModal({
             </div>
           </div>
 
-          <div className="border-t border-slate-100 pt-6">
-            <h4 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-indigo-500" /> Job Notes
-            </h4>
-            <div className="space-y-4 mb-4">
-              {job.notes?.map((note) => (
-                <div key={note.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                  <p className="text-sm text-slate-700 mb-1">{note.text}</p>
-                  <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
-                    {note.user} • {new Date(note.timestamp).toLocaleString()}
-                  </p>
-                </div>
-              ))}
-              {(!job.notes || job.notes.length === 0) && (
-                <p className="text-sm text-slate-400 italic">No notes yet.</p>
+          {/* Tab Selection */}
+          <div className="flex border-b border-slate-100 mb-2">
+            <button
+              onClick={() => setActiveTab("activity")}
+              className={`px-4 py-2 text-sm font-bold flex items-center gap-2 transition-all border-b-2 ${activeTab === "activity" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+            >
+              <History className="w-4 h-4" /> Activity
+            </button>
+            <button
+              onClick={() => setActiveTab("notes")}
+              className={`px-4 py-2 text-sm font-bold flex items-center gap-2 transition-all border-b-2 ${activeTab === "notes" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+            >
+              <FileText className="w-4 h-4" /> Notes
+            </button>
+            <button
+              onClick={() => setActiveTab("chat")}
+              className={`px-4 py-2 text-sm font-bold flex items-center gap-2 transition-all border-b-2 ${activeTab === "chat" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+            >
+              <MessageSquare className="w-4 h-4" /> Client Chat
+              {messages.some(m => m.sender === 'Client') && (
+                <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse" />
               )}
-            </div>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newNote}
-                onChange={(e) => setNewNote(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleAddNote()}
-                placeholder="Add a note..."
-                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-              />
-              <button
-                onClick={handleAddNote}
-                className="bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 transition-colors"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </div>
+            </button>
           </div>
 
-          {job.activityLog && job.activityLog.length > 0 && (
-            <div className="border-t border-slate-100 pt-6">
-              <h4 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                <History className="w-4 h-4 text-indigo-500" /> Activity Log
-              </h4>
-              <div className="space-y-4">
-                {job.activityLog
-                  .slice()
-                  .reverse()
-                  .map((log) => (
-                    <div key={log.id} className="flex gap-3">
-                      <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mt-1.5 shrink-0" />
-                      <div>
-                        <p className="text-sm text-slate-700">{log.action}</p>
-                        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
-                          {log.user} •{" "}
-                          {new Date(log.timestamp).toLocaleString()}
+          {/* Tab Content */}
+          <div className="min-h-[300px] flex flex-col">
+            {activeTab === "activity" && (
+              <div className="space-y-4 py-4">
+                {job.activityLog?.slice().reverse().map((log) => (
+                  <div key={log.id} className="flex gap-3">
+                    <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mt-1.5 shrink-0" />
+                    <div>
+                      <p className="text-sm text-slate-700">{log.action}</p>
+                      <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
+                        {log.user} • {new Date(log.timestamp).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+                {(!job.activityLog || job.activityLog.length === 0) && (
+                  <p className="text-sm text-slate-400 italic">No activity logged yet.</p>
+                )}
+              </div>
+            )}
+
+            {activeTab === "notes" && (
+              <div className="flex flex-col h-full py-4">
+                <div className="space-y-4 mb-4 flex-1">
+                  {job.notes?.map((note) => (
+                    <div key={note.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                      <p className="text-sm text-slate-700 mb-1">{note.text}</p>
+                      <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
+                        {note.user} • {new Date(note.timestamp).toLocaleString()}
+                      </p>
+                    </div>
+                  ))}
+                  {(!job.notes || job.notes.length === 0) && (
+                    <p className="text-sm text-slate-400 italic">No notes yet.</p>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newNote}
+                    onChange={(e) => setNewNote(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleAddNote()}
+                    placeholder="Add a private note..."
+                    className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                  <button
+                    onClick={handleAddNote}
+                    className="bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 transition-colors"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {activeTab === "chat" && (
+              <div className="flex flex-col h-[350px] py-4">
+                <div className="flex-1 overflow-y-auto space-y-3 mb-4 pr-2">
+                  {messages.length === 0 && (
+                    <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                      <p className="text-xs text-slate-400 italic">No messages with the client yet.</p>
+                    </div>
+                  )}
+                  {messages.map((m, i) => (
+                    <div key={m.id || i} className={`flex ${m.sender === 'Client' ? 'justify-start' : 'justify-end'}`}>
+                      <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm ${m.sender !== 'Client'
+                        ? 'bg-indigo-600 text-white rounded-tr-none'
+                        : 'bg-slate-100 text-slate-700 border border-slate-200 rounded-tl-none'
+                        }`}>
+                        <div className="flex items-center gap-1.5 mb-1 opacity-60 text-[9px] font-bold uppercase tracking-wider">
+                          <User className="w-2.5 h-2.5" /> {m.sender}
+                        </div>
+                        <p>{m.content}</p>
+                        <p className={`text-[9px] mt-1 opacity-60 ${m.sender !== 'Client' ? 'text-right' : 'text-left'}`}>
+                          {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </p>
                       </div>
                     </div>
                   ))}
+                  <div ref={chatEndRef} />
+                </div>
+                <div className="flex gap-2 mt-auto">
+                  <input
+                    type="text"
+                    value={newChatMessage}
+                    onChange={(e) => setNewChatMessage(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSendChatMessage()}
+                    placeholder="Reply to client..."
+                    className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  />
+                  <button
+                    onClick={handleSendChatMessage}
+                    disabled={!newChatMessage.trim() || isSendingMessage}
+                    className="bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 disabled:bg-slate-200 transition-colors"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+
 
           {job.status === "invoiced" ||
             job.status === "completed" ||
@@ -355,6 +550,7 @@ export function JobDetailModal({
           <div className="bg-white w-full max-w-3xl my-8 rounded-none shadow-2xl p-12 relative print:p-0 print:shadow-none print:my-0">
             <button
               onClick={() => setShowInvoicePreview(false)}
+              title="Close invoice preview"
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 print:hidden"
             >
               <X className="w-6 h-6" />
