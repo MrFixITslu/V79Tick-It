@@ -1,0 +1,13 @@
+[
+  {
+    "type": "job_created",
+    "action": "Job created",
+    "user": "admin@test.com",
+    "details": {
+      "title": "Website Redesign",
+      "client": "Test Client",
+      "status": "request"
+    },
+    "timestamp": "2026-03-19T02:05:15.938Z"
+  }
+]

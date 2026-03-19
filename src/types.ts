@@ -51,6 +51,25 @@ export interface JobMessage {
   timestamp: string;
 }
 
+export interface JobLineItem {
+  id: string;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+}
+
+export interface Deliverable {
+  id: string;
+  title: string;
+  type: "digital" | "physical";
+  // Digital
+  fileUrl?: string; // e.g. AWS S3 link or Vercel Blob
+  // Physical
+  deliveryMethod?: "pickup" | "delivery";
+  deliveryFee?: number;
+  trackingInfo?: string;
+}
+
 export type WorkerType = "salary" | "hourly" | "bi-weekly";
 
 export interface Employee {
@@ -82,6 +101,7 @@ export interface TimeLog {
   startTime: string;
   endTime?: string;
   description?: string;
+  status: JobStatus;
 }
 
 export interface Job {
@@ -104,6 +124,11 @@ export interface Job {
   timeLogs?: TimeLog[];
   messages?: JobMessage[];
   depositPaid?: boolean;
+  quoteApproved?: number;
+  lineItems?: JobLineItem[];
+  deliverables?: Deliverable[];
+  timerStartedAt?: string | null;
+  stageAssignments?: Partial<Record<JobStatus, string>>;
 }
 
 export type PagePermission = "dashboard" | "jobs" | "payroll" | "invoices" | "users" | "files" | "new-request";

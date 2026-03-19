@@ -11,7 +11,7 @@ import {
   Printer,
   Eye,
 } from "lucide-react";
-import { JobDetailModal } from "./JobDetailModal";
+import { JobDetailView } from "./JobDetailView";
 import { BusinessSettings } from "./Settings";
 
 export function Invoices({
@@ -19,14 +19,15 @@ export function Invoices({
   setJobs,
   employees,
   settings,
+  onSelectJob,
 }: {
   jobs: Job[];
   setJobs: React.Dispatch<React.SetStateAction<Job[]>>;
   employees: Employee[];
   settings: BusinessSettings;
+  onSelectJob: (id: string) => void;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
 
   // Filter jobs that are either 'invoiced', 'completed', or 'paid'
   const invoiceableJobs = jobs.filter(
@@ -47,8 +48,6 @@ export function Invoices({
   const totalPending = jobs
     .filter((j) => j.status === "invoiced" || j.status === "completed")
     .reduce((sum, j) => sum + (j.amount || 0), 0);
-
-  const selectedJob = jobs.find((j) => j.id === selectedJobId);
 
   return (
     <div className="space-y-8">
@@ -162,7 +161,7 @@ export function Invoices({
                       </button>
                     )}
                     <button
-                      onClick={() => setSelectedJobId(job.id)}
+                      onClick={() => onSelectJob(job.id)}
                       className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors flex items-center gap-2 text-xs font-bold uppercase tracking-widest"
                     >
                       <Eye className="w-4 h-4" />
@@ -185,18 +184,6 @@ export function Invoices({
           </tbody>
         </table>
       </div>
-
-      {selectedJob && (
-        <JobDetailModal
-          job={selectedJob}
-          employees={employees}
-          settings={settings}
-          onClose={() => setSelectedJobId(null)}
-          onUpdate={(updatedJob) => {
-            setJobs(jobs.map((j) => (j.id === updatedJob.id ? updatedJob : j)));
-          }}
-        />
-      )}
     </div>
   );
 }

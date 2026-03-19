@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { apiFetch } from '../lib/api';
 import {
     User,
     Mail,
@@ -62,19 +63,24 @@ export function Clients() {
     const [form, setForm] = useState({ email: "", phone: "", company: "", notes: "" });
     const [saving, setSaving] = useState(false);
     const [search, setSearch] = useState("");
+    const [loading, setLoading] = useState(true);
 
     const fetchClients = async () => {
         try {
-            const res = await fetch("/api/clients");
-            const data = await res.json();
-            setClients(data);
-            // Refresh selected client if one is open
-            if (selected) {
-                const refreshed = data.find((c: Client) => c.id === selected.id);
-                if (refreshed) setSelected(refreshed);
+            const res = await apiFetch("/api/clients");
+            if (res.ok) {
+                const data = await res.json();
+                setClients(data);
+                // Refresh selected client if one is open
+                if (selected) {
+                    const refreshed = data.find((c: Client) => c.id === selected.id);
+                    if (refreshed) setSelected(refreshed);
+                }
             }
         } catch (e) {
             console.error("Failed to fetch clients:", e);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -90,7 +96,7 @@ export function Clients() {
         if (!selected) return;
         setSaving(true);
         try {
-            await fetch(`/api/clients/${selected.id}`, {
+            await apiFetch(`/api/clients/${selected.id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(form),
@@ -265,6 +271,14 @@ export function Clients() {
     }
 
     // ── List View ─────────────────────────────────────────────────────────────────
+    if (loading) {
+        return (
+            <div className="flex justify-center items-center h-64">
+                <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">

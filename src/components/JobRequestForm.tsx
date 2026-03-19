@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Job, Employee } from '../types';
+import { Job, Employee, JobStatus } from '../types';
 import { Send, Sparkles, AlertCircle } from 'lucide-react';
 
 interface JobRequestFormProps {
@@ -17,6 +17,7 @@ export function JobRequestForm({ onSave, employees, className = "" }: JobRequest
   const [amount, setAmount] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
+  const [stageAssignments, setStageAssignments] = useState<Partial<Record<JobStatus, string>>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
 
@@ -36,6 +37,7 @@ export function JobRequestForm({ onSave, employees, className = "" }: JobRequest
         amount: amount ? parseFloat(amount) : undefined,
         dueDate: dueDate || undefined,
         assignedTo: assignedTo || undefined,
+        stageAssignments: Object.keys(stageAssignments).length > 0 ? stageAssignments : undefined,
         activityLog: [
           {
             id: crypto.randomUUID(),
@@ -201,6 +203,32 @@ export function JobRequestForm({ onSave, employees, className = "" }: JobRequest
           </div>
         </div>
 
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-bold text-slate-800 uppercase tracking-tight">Pipeline Assignments</label>
+            <Sparkles className="w-4 h-4 text-indigo-500" />
+          </div>
+          <p className="text-xs text-slate-500 -mt-2 mb-4">Assign a team member to each stage. They will be auto-notified when the job advances.</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-6 rounded-2xl border border-slate-100">
+            {(['estimation', 'in-progress', 'review', 'invoiced'] as JobStatus[]).map(status => (
+              <div key={status} className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{status.replace('-', ' ')}</label>
+                <select
+                  value={stageAssignments[status] || ""}
+                  title={`Assign ${status} stage to a team member`}
+                  onChange={(e) => setStageAssignments(prev => ({ ...prev, [status]: e.target.value }))}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500/20 outline-none"
+                >
+                  <option value="">Unassigned</option>
+                  {employees.map(emp => (
+                    <option key={emp.id} value={emp.name}>{emp.name}</option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <label className="text-sm font-semibold text-slate-700">Job Description</label>
@@ -208,7 +236,7 @@ export function JobRequestForm({ onSave, employees, className = "" }: JobRequest
           </div>
           <textarea
             required
-            rows={5}
+            rows={4}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Describe the project goals, deliverables, and any specific requirements..."

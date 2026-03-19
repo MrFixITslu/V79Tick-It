@@ -66,7 +66,7 @@ export function Sidebar({
         />
         <NavItem
           icon={<Users />}
-          label="Users"
+          label="Team"
           active={activeTab === "users"}
           onClick={() => setActiveTab("users")}
         />

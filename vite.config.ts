@@ -21,7 +21,7 @@ export default defineConfig(({ mode }) => {
         ignored: ['**/data.db', '**/data.db-journal', '**/data.db-shm', '**/data.db-wal', '**/.env'],
       },
       proxy: {
-        '/api': 'http://localhost:3000',
+        '/api': 'http://127.0.0.1:3001',
       },
     },
   };

@@ -1,8 +1,8 @@
 import React, { useState } from "react";
+import { apiFetch } from '../lib/api';
 import { Job, JobStatus, ActivityLogEntry, COLUMNS, Employee } from "../types";
 import { Plus, MoreHorizontal, Clock, DollarSign, ArrowRight, ArrowLeft } from "lucide-react";
 import { JobModal } from "./JobModal";
-import { JobDetailModal } from "./JobDetailModal";
 import { GanttView } from "./GanttView";
 import { BusinessSettings } from "./Settings";
 
@@ -11,14 +11,15 @@ export function JobBoard({
   setJobs,
   employees,
   settings,
+  onSelectJob,
 }: {
   jobs: Job[];
   setJobs: React.Dispatch<React.SetStateAction<Job[]>>;
   employees: Employee[];
   settings: BusinessSettings;
+  onSelectJob: (id: string) => void;
 }) {
   const [isNewModalOpen, setIsNewModalOpen] = useState(false);
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"kanban" | "timeline">("kanban");
   const [jobsMoving, setJobsMoving] = useState<Set<string>>(new Set());
 
@@ -28,6 +29,11 @@ export function JobBoard({
 
     const job = jobs.find(j => j.id === jobId);
     if (!job) return;
+
+    if (job.status === "estimation" && newStatus === "in-progress" && !job.quoteApproved) {
+      alert("Quote must be approved by the client before moving to In-Progress.");
+      return;
+    }
 
     setJobsMoving(prev => new Set(prev).add(jobId));
 
@@ -73,7 +79,7 @@ export function JobBoard({
     };
 
     try {
-      const response = await fetch(`/api/jobs/${jobId}`, {
+      const response = await apiFetch(`/api/jobs/${jobId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(updatedJob)
@@ -115,7 +121,7 @@ export function JobBoard({
     };
 
     try {
-      const response = await fetch("/api/jobs", {
+      const response = await apiFetch("/api/jobs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newJob)
@@ -131,8 +137,6 @@ export function JobBoard({
       alert("Failed to create job. Please try again.");
     }
   };
-
-  const selectedJob = jobs.find((j) => j.id === selectedJobId);
 
   return (
     <div className="h-full flex flex-col">
@@ -200,7 +204,7 @@ export function JobBoard({
                       job={job}
                       isMoving={jobsMoving.has(job.id)}
                       moveJob={moveJob}
-                      onClick={() => setSelectedJobId(job.id)}
+                      onClick={() => onSelectJob(job.id)}
                     />
                   ))}
                 {jobs.filter((j) => j.status === col.id).length === 0 && (
@@ -214,7 +218,7 @@ export function JobBoard({
         </div>
       ) : (
         <div className="flex-1 overflow-hidden">
-          <GanttView jobs={jobs} onJobClick={(id) => setSelectedJobId(id)} />
+          <GanttView jobs={jobs} onJobClick={(id) => onSelectJob(id)} />
         </div>
       )
       }
@@ -227,20 +231,6 @@ export function JobBoard({
         }}
         employees={employees}
       />
-
-      {
-        selectedJob && (
-          <JobDetailModal
-            job={selectedJob}
-            employees={employees}
-            settings={settings}
-            onClose={() => setSelectedJobId(null)}
-            onUpdate={(updatedJob) => {
-              setJobs(jobs.map((j) => (j.id === updatedJob.id ? updatedJob : j)));
-            }}
-          />
-        )
-      }
     </div >
   );
 }

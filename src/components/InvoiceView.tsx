@@ -74,24 +74,39 @@ export function InvoiceView({ job, settings, onClose }: InvoiceViewProps) {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {invoiceNotes
-                            .split("\n")
-                            .filter((line) => line.trim())
-                            .map((line, i) => (
-                                <tr key={i}>
-                                    <td className="py-4 text-sm text-slate-700">{line}</td>
+                        {job.lineItems && job.lineItems.length > 0 ? (
+                            job.lineItems.map((item) => (
+                                <tr key={item.id}>
+                                    <td className="py-4 text-sm text-slate-700">
+                                        <div className="flex items-center gap-2">
+                                            <span>{item.description}</span>
+                                            {item.quantity > 1 && <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{item.quantity} x ${item.unitPrice}</span>}
+                                        </div>
+                                    </td>
                                     <td className="py-4 text-right text-sm font-medium text-slate-900">
-                                        {line.includes("$") ? line.split("$")[1] : "-"}
+                                        ${(item.quantity * item.unitPrice).toLocaleString()}
                                     </td>
                                 </tr>
-                            ))}
-                        {!invoiceNotes && (
+                            ))
+                        ) : invoiceNotes.trim() ? (
+                            invoiceNotes
+                                .split("\n")
+                                .filter((line) => line.trim())
+                                .map((line, i) => (
+                                    <tr key={i}>
+                                        <td className="py-4 text-sm text-slate-700">{line}</td>
+                                        <td className="py-4 text-right text-sm font-medium text-slate-900">
+                                            {line.includes("$") ? line.split("$")[1] : "-"}
+                                        </td>
+                                    </tr>
+                                ))
+                        ) : (
                             <tr>
                                 <td className="py-4 text-sm text-slate-700">
                                     {job.title} - Full Project
                                 </td>
                                 <td className="py-4 text-right text-sm font-medium text-slate-900">
-                                    ${job.amount?.toLocaleString()}
+                                    ${job.amount?.toLocaleString() || "0"}
                                 </td>
                             </tr>
                         )}

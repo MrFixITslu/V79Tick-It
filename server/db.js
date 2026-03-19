@@ -22,7 +22,10 @@ db.exec(`
     assignedTo TEXT,
     clientEmail TEXT,
     secureToken TEXT,
-    depositPaid INTEGER DEFAULT 0
+    depositPaid INTEGER DEFAULT 0,
+    timerStartedAt TEXT,
+    stageAssignments TEXT,
+    timeLogs TEXT
   );
 
   CREATE TABLE IF NOT EXISTS job_tags (
@@ -107,12 +110,67 @@ db.exec(`
     timestamp TEXT NOT NULL,
     FOREIGN KEY(job_id) REFERENCES jobs(id) ON DELETE CASCADE
   );
+
+  CREATE TABLE IF NOT EXISTS notifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    type TEXT NOT NULL,
+    isRead INTEGER DEFAULT 0,
+    createdAt TEXT NOT NULL,
+    account_id TEXT,
+    FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
 `);
 
 try {
   db.exec("ALTER TABLE jobs ADD COLUMN depositPaid INTEGER DEFAULT 0");
+} catch (e) {}
+
+// Multi-tenancy Migrations
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS accounts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      createdAt TEXT NOT NULL
+    );
+    INSERT OR IGNORE INTO accounts (id, name, createdAt) VALUES ('default_account', 'Default Account', CURRENT_TIMESTAMP);
+  `);
+
+  // Migrate settings table to support multiple rows
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS settings_new (
+      id TEXT PRIMARY KEY,
+      name TEXT, address TEXT, email TEXT, phone TEXT,
+      logoUrl TEXT, paymentTerms TEXT, currency TEXT, taxRate REAL,
+      account_id TEXT DEFAULT 'default_account'
+    );
+    INSERT OR IGNORE INTO settings_new (id, name, address, email, phone, logoUrl, paymentTerms, currency, taxRate, account_id)
+    SELECT CAST(id AS TEXT), name, address, email, phone, logoUrl, paymentTerms, currency, taxRate, 'default_account' FROM settings;
+    DROP TABLE settings;
+    ALTER TABLE settings_new RENAME TO settings;
+  `);
+  
+  const tables = ['jobs', 'job_tags', 'activity_logs', 'employees', 'users', 'user_permissions', 'files', 'clients', 'job_messages'];
+  for (const table of tables) {
+    try {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN account_id TEXT DEFAULT 'default_account'`);
+    } catch (e) {
+      // Column might already exist
+    }
+  }
+
+  try { db.exec("ALTER TABLE users ADD COLUMN password_hash TEXT"); } catch(e) {}
+  try { db.exec("ALTER TABLE jobs ADD COLUMN quoteApproved INTEGER DEFAULT 0"); } catch(e) {}
+  try { db.exec("ALTER TABLE jobs ADD COLUMN lineItems TEXT"); } catch(e) {}
+  try { db.exec("ALTER TABLE jobs ADD COLUMN deliverables TEXT"); } catch(e) {}
+  try { db.exec("ALTER TABLE jobs ADD COLUMN timerStartedAt TEXT"); } catch(e) {}
+  try { db.exec("ALTER TABLE jobs ADD COLUMN stageAssignments TEXT"); } catch(e) {}
+  try { db.exec("ALTER TABLE jobs ADD COLUMN timeLogs TEXT"); } catch(e) {}
 } catch (e) {
-  // Column might already exist
+  console.error("Migration error:", e.message);
 }
 
 // Check if seeding is needed

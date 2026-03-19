@@ -1,8 +1,9 @@
 import React from "react";
 import { Job } from "../types";
-import { Clock, DollarSign, Calendar, History, FileText, MessageSquare, Send, User, Download } from "lucide-react";
+import { Clock, DollarSign, Calendar, History, FileText, MessageSquare, Send, User, Download, X, Package, Lock, Truck } from "lucide-react";
 import { BusinessSettings } from "./Settings";
 import { InvoiceView } from "./InvoiceView";
+import { PaymentModal } from "./PaymentModal";
 
 export function ClientPortal({
     token
@@ -16,6 +17,7 @@ export function ClientPortal({
 
     const [isPaying, setIsPaying] = React.useState(false);
     const [isPayingDeposit, setIsPayingDeposit] = React.useState(false);
+    const [isApproving, setIsApproving] = React.useState(false);
     const [paymentSuccess, setPaymentSuccess] = React.useState(false);
 
     const [messages, setMessages] = React.useState<any[]>([]);
@@ -23,36 +25,31 @@ export function ClientPortal({
     const [isSending, setIsSending] = React.useState(false);
     const [isChatOpen, setIsChatOpen] = React.useState(false);
     const [showInvoice, setShowInvoice] = React.useState(false);
+    const [paymentModalConfig, setPaymentModalConfig] = React.useState<{ isOpen: boolean, type: "deposit" | "final", amount: number } | null>(null);
     const chatEndRef = React.useRef<HTMLDivElement>(null);
 
 
     React.useEffect(() => {
-        const fetchPortalData = async () => {
+        const fetchData = async () => {
             try {
-                const [jobRes, settingsRes] = await Promise.all([
-                    fetch(`/api/portal/${token}`),
-                    fetch("/api/settings")
-                ]);
-
-                if (!jobRes.ok) {
-                    throw new Error("Invalid or expired link");
+                const res = await fetch(`/api/portal/${token}`);
+                if (!res.ok) {
+                    setError("Invalid or expired portal link.");
+                    return;
                 }
-
-                const jobData = await jobRes.json();
-                const settingsData = await settingsRes.json();
-
-                setJob(jobData);
-                setSettings(settingsData);
-                setMessages(jobData.messages || []);
-                setPaymentSuccess(jobData.status === "paid");
-            } catch (err: any) {
-                setError(err.message);
+                const data = await res.json();
+                setJob(data.job);
+                setSettings(data.settings);
+                setMessages(data.job.messages || []); // Assuming messages are now part of data.job
+                setPaymentSuccess(data.job.status === "paid"); // Assuming status is now part of data.job
+            } catch (err) {
+                setError("Failed to load portal data.");
             } finally {
                 setIsLoading(false);
             }
         };
 
-        fetchPortalData();
+        fetchData();
 
         // Polling for messages
         const pollInterval = setInterval(async () => {
@@ -130,6 +127,20 @@ export function ClientPortal({
             console.error("Deposit payment error:", e);
         } finally {
             setIsPayingDeposit(false);
+        }
+    };
+
+    const handleApproveQuote = async () => {
+        setIsApproving(true);
+        try {
+            const res = await fetch(`/api/portal/${token}/approve-quote`, { method: "POST" });
+            if (res.ok) {
+                setJob(prev => prev ? { ...prev, quoteApproved: 1 } : null);
+            }
+        } catch (e) {
+            console.error("Approval error:", e);
+        } finally {
+            setIsApproving(false);
         }
     };
 
@@ -212,16 +223,85 @@ export function ClientPortal({
                         </div>
                     </div>
 
+                    <div className="flex justify-between items-center mb-2">
+                        <h4 className="text-sm font-semibold text-slate-900">Scope of Work</h4>
+                        {job.amount ? (
+                            <button
+                                onClick={() => setShowInvoice(true)}
+                                className="text-sm font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                                <FileText className="w-4 h-4" />
+                                View Document
+                            </button>
+                        ) : null}
+                    </div>
                     <div>
-                        <h4 className="text-sm font-semibold text-slate-900 mb-2">Scope of Work</h4>
                         <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 text-slate-700 text-sm whitespace-pre-wrap leading-relaxed">
                             {job.description || "No description provided."}
                         </div>
                     </div>
 
+                    {job.deliverables && job.deliverables.length > 0 && (
+                        <div className="border border-slate-200 p-6 rounded-2xl mb-6 bg-white shadow-sm">
+                            <h4 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                                <Package className="w-5 h-5 text-indigo-500" /> Secure Deliverables
+                            </h4>
+                            <div className="space-y-3">
+                                {job.deliverables.map(d => (
+                                    <div key={d.id} className="flex items-center justify-between p-4 bg-slate-50 border border-slate-100 rounded-xl">
+                                        <div className="flex items-center gap-3">
+                                            {d.type === 'digital' ? <Download className="w-5 h-5 text-slate-400" /> : <Truck className="w-5 h-5 text-slate-400" />}
+                                            <div>
+                                                <p className="font-bold text-slate-900 text-sm">{d.title || "Unnamed Asset"}</p>
+                                                <p className="text-xs text-slate-500 capitalize">{d.type} {d.type === 'physical' && d.deliveryMethod ? `• ${d.deliveryMethod}` : ''}</p>
+                                            </div>
+                                        </div>
+                                        {d.type === 'digital' ? (
+                                            <button 
+                                                disabled={job.status !== "paid"}
+                                                onClick={() => { if(d.fileUrl) window.open(d.fileUrl, "_blank"); }}
+                                                className={`text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-2 transition-all shadow-sm ${job.status === "paid" ? "bg-red-500 hover:bg-red-600 text-white shadow-red-200" : "bg-slate-200 text-slate-400 cursor-not-allowed"}`}
+                                            >
+                                                {job.status === "paid" ? <><Download className="w-4 h-4" /> Download</> : <><Lock className="w-4 h-4" /> Locked</>}
+                                            </button>
+                                        ) : (
+                                            <div className="text-right">
+                                                {d.deliveryFee ? <p className="text-sm font-bold text-slate-900">+${d.deliveryFee}</p> : <p className="text-sm font-bold text-emerald-600">Free</p>}
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Quote Approval Section */}
+                    {job.status === "estimation" && !job.quoteApproved && (
+                        <div className="bg-indigo-50 border border-indigo-100 p-6 rounded-2xl mb-6">
+                            <div className="flex items-center gap-2 mb-4 text-indigo-700 font-bold">
+                                <FileText className="w-5 h-5" />
+                                <h3>Quote Approval Required</h3>
+                            </div>
+                            <p className="text-sm text-indigo-900/80 mb-6">
+                                Please review the scope of work and estimate amount. Once approved, you can proceed to secure the project with a deposit.
+                            </p>
+                            <button
+                                onClick={handleApproveQuote}
+                                disabled={isApproving}
+                                className="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md shadow-indigo-200 flex items-center justify-center gap-2"
+                            >
+                                {isApproving ? (
+                                    <span className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" />
+                                ) : (
+                                    <>Approve Quote</>
+                                )}
+                            </button>
+                        </div>
+                    )}
+
                     {/* Deposit Section */}
-                    {job.amount && !job.depositPaid && (job.status === 'request' || job.status === 'estimation') && (
-                        <div className="bg-amber-50 border border-amber-100 p-6 rounded-2xl">
+                    {job.amount && !job.depositPaid && !["invoiced", "completed", "paid"].includes(job.status) && (job.status !== "estimation" || !!job.quoteApproved) && (
+                        <div className="bg-amber-50 border border-amber-100 p-6 rounded-2xl mb-6">
                             <div className="flex items-center gap-2 mb-4 text-amber-700 font-bold">
                                 <DollarSign className="w-5 h-5" />
                                 <h3>30% Deposit Required</h3>
@@ -230,14 +310,14 @@ export function ClientPortal({
                                 A 30% deposit is required to secure your project and begin engineering work.
                             </p>
                             <button
-                                onClick={handlePayDeposit}
+                                onClick={() => setPaymentModalConfig({ isOpen: true, type: "deposit", amount: job.amount ? job.amount * 0.3 : 0 })}
                                 disabled={isPayingDeposit}
                                 className="w-full sm:w-auto bg-amber-600 hover:bg-amber-700 disabled:bg-amber-400 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md shadow-amber-200 flex items-center justify-center gap-2"
                             >
                                 {isPayingDeposit ? (
                                     <span className="animate-spin w-5 h-5 border-2 border-white/30 border-t-white rounded-full" />
                                 ) : (
-                                    <>Pay Deposit - ${(job.amount * 0.3).toLocaleString()}</>
+                                    <>Pay Deposit - ${(job.amount ? job.amount * 0.3 : 0).toLocaleString()}</>
                                 )}
                             </button>
                         </div>
@@ -252,7 +332,7 @@ export function ClientPortal({
                             </div>
                             <div className="flex flex-col sm:flex-row gap-3">
                                 <button
-                                    onClick={handlePayment}
+                                    onClick={() => setPaymentModalConfig({ isOpen: true, type: "final", amount: job.amount || 0 })}
                                     disabled={isPaying}
                                     title="Secure payment for this invoice"
                                     className="flex-1 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white px-6 py-3 rounded-xl font-bold transition-all shadow-md shadow-indigo-200 flex items-center justify-center gap-2"
@@ -283,9 +363,16 @@ export function ClientPortal({
                                 <DollarSign className="w-8 h-8" />
                             </div>
                             <h3 className="text-xl font-bold text-emerald-900 mb-2">Payment Successful!</h3>
-                            <p className="text-sm text-emerald-700">
+                            <p className="text-sm text-emerald-700 mb-4">
                                 Thank you for your business. A receipt has been sent to your email.
                             </p>
+                            <button
+                                onClick={() => setShowInvoice(true)}
+                                className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 px-6 py-2 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
+                            >
+                                <FileText className="w-5 h-5" />
+                                View Receipt
+                            </button>
                         </div>
                     )}
                 </div>
@@ -337,8 +424,8 @@ export function ClientPortal({
                                     <p className="text-xs opacity-70">Active Now</p>
                                 </div>
                             </div>
-                            <button onClick={() => setIsChatOpen(false)} className="hover:bg-indigo-500 p-1 rounded-lg transition-colors">
-                                <History className="w-5 h-5 rotate-45" /> {/* Use History as an X replacement or just a X if I had it, wait I have History rotate it */}
+                            <button onClick={() => setIsChatOpen(false)} title="Close chat" className="hover:bg-indigo-500 p-1 rounded-lg transition-colors">
+                                <X className="w-5 h-5" />
                             </button>
                         </div>
 
@@ -399,6 +486,19 @@ export function ClientPortal({
                     </button>
                 )}
             </div>
+
+            {paymentModalConfig?.isOpen && (
+                <PaymentModal
+                    amount={paymentModalConfig.amount}
+                    type={paymentModalConfig.type}
+                    onSuccess={() => {
+                        setPaymentModalConfig(null);
+                        if (paymentModalConfig.type === "deposit") handlePayDeposit();
+                        else handlePayment();
+                    }}
+                    onClose={() => setPaymentModalConfig(null)}
+                />
+            )}
 
             {showInvoice && (
                 <InvoiceView
