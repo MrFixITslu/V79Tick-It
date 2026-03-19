@@ -1,0 +1,13 @@
+[
+  {
+    "type": "job_created",
+    "action": "Job created",
+    "user": "admin@vision79.com",
+    "details": {
+      "title": "Final Verification",
+      "client": "Final Co",
+      "status": "request"
+    },
+    "timestamp": "2026-03-19T10:51:38.940Z"
+  }
+]

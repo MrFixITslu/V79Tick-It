@@ -195,6 +195,75 @@ const createNotification = ({ userId, title, message, type, accountId }) => {
     }
 };
 
+/**
+ * Advanced Stage Transition Helper
+ * Logs current timer, starts new timer, handles auto-assignment and notifications.
+ */
+const updateJobStage = (id, newStatus, accountId, userName = "System") => {
+    const job = db.prepare("SELECT * FROM jobs WHERE id = ? AND account_id = ?").get(id, accountId);
+    if (!job) return null;
+
+    let timeLogs = job.timeLogs ? JSON.parse(job.timeLogs) : [];
+    const now = new Date().toISOString();
+
+    // 1. Log previous timer segment if exists
+    if (job.timerStartedAt) {
+        const elapsed = (new Date(now).getTime() - new Date(job.timerStartedAt).getTime()) / (1000 * 60 * 60);
+        if (elapsed > 0) {
+            timeLogs.push({
+                id: uuidv4(),
+                employeeId: job.assignedTo || "unassigned",
+                startTime: job.timerStartedAt,
+                endTime: now,
+                status: job.status
+            });
+        }
+    }
+
+    // 2. Automations: Stage Assignments
+    let assignedTo = job.assignedTo;
+    const stageAssignments = job.stageAssignments ? JSON.parse(job.stageAssignments) : {};
+    if (stageAssignments[newStatus]) {
+        assignedTo = stageAssignments[newStatus];
+    }
+
+    // 3. Status-specific logic: Stop timer if finished
+    const isFinished = ['completed', 'paid'].includes(newStatus);
+    const timerStartedAt = isFinished ? null : now;
+
+    // 4. Update DB
+    db.prepare(`
+        UPDATE jobs SET 
+            status = ?, 
+            timeLogs = ?, 
+            timerStartedAt = ?, 
+            assignedTo = ?
+        WHERE id = ? AND account_id = ?
+    `).run(newStatus, JSON.stringify(timeLogs), timerStartedAt, assignedTo, id, accountId);
+
+    // 5. Activity Log
+    db.prepare("INSERT INTO activity_logs (id, job_id, action, timestamp, user, account_id) VALUES (?, ?, ?, ?, ?, ?)")
+        .run(uuidv4(), id, `Stage advanced to ${newStatus}${assignedTo !== job.assignedTo ? ` and auto-assigned to ${assignedTo}` : ''}`, now, userName, accountId);
+
+    // 6. Notifications
+    if (assignedTo) {
+        const userMatch = db.prepare("SELECT id FROM users WHERE name = ? AND account_id = ?").get(assignedTo, accountId);
+        if (userMatch) {
+            createNotification({
+                userId: userMatch.id,
+                title: assignedTo !== job.assignedTo ? "Job Assignment Update" : "Job Status Updated",
+                message: assignedTo !== job.assignedTo 
+                    ? `You have been auto-assigned to "${job.title}" for stage: ${newStatus}`
+                    : `"${job.title}" is now: ${newStatus}`,
+                type: assignedTo !== job.assignedTo ? "assignment" : "status_change",
+                accountId
+            });
+        }
+    }
+
+    return { ...job, status: newStatus, timeLogs, timerStartedAt, assignedTo };
+};
+
 // --- API ROUTES (PROTECTED) ---
 
 // Get all jobs
@@ -261,9 +330,9 @@ app.post("/api/jobs", authenticateToken, (req, res) => {
             account_id: req.accountId,
             lineItems: lineItems ? JSON.stringify(lineItems) : null,
             deliverables: deliverables ? JSON.stringify(deliverables) : null,
-            timerStartedAt: timerStartedAt || new Date().toISOString(),
+            timerStartedAt: timerStartedAt || new Date().toISOString(), // Ensure timer ALWAYS starts
             stageAssignments: stageAssignments ? JSON.stringify(stageAssignments) : null,
-            timeLogs: timeLogs ? JSON.stringify(timeLogs) : null
+            timeLogs: timeLogs ? JSON.stringify(timeLogs) : "[]" // Default to empty array
         });
 
         if (tags && tags.length > 0) {
@@ -348,21 +417,24 @@ app.put("/api/jobs/:id", authenticateToken, async (req, res) => {
         }
 
         const statusChanged = status && existingJob.status !== status;
+        let finalStatus = status || existingJob.status;
         let finalAssignedTo = assignedTo;
         let finalTimerStartedAt = timerStartedAt;
+        let finalTimeLogs = timeLogs;
 
-        // AUTOMATION: If status changed, check for stage assignment
-        if (statusChanged) {
-            const assignments = stageAssignments || (existingJob.stageAssignments ? JSON.parse(existingJob.stageAssignments) : {});
-            if (assignments[status]) {
-                finalAssignedTo = assignments[status];
-                finalTimerStartedAt = new Date().toISOString();
-                
-                // Add automated activity log
-                db.prepare("INSERT INTO activity_logs (id, job_id, action, timestamp, user, account_id) VALUES (?, ?, ?, ?, ?, ?)")
-                    .run(uuidv4(), id, `Auto-assigned to ${finalAssignedTo} for stage: ${status}`, new Date().toISOString(), "System", req.accountId);
-                
-                console.log(`AUTOMATION: Job ${id} moved to ${status}. Auto-assigned to ${finalAssignedTo}. Timer started.`);
+        // AUTO-ADVANCE: If in 'request' and now assigned, move to 'estimation'
+        if (finalStatus === 'request' && assignedTo && !existingJob.assignedTo) {
+             finalStatus = 'estimation';
+             console.log(`AUTO-ADVANCE: Job ${id} assigned to ${assignedTo}. Moving to 'estimation'.`);
+        }
+
+        // AUTOMATION: If status changed (either manually or via auto-advance)
+        if (finalStatus !== existingJob.status) {
+            const result = updateJobStage(id, finalStatus, req.accountId, req.user?.email || "User");
+            if (result) {
+                finalAssignedTo = result.assignedTo;
+                finalTimerStartedAt = result.timerStartedAt;
+                finalTimeLogs = result.timeLogs;
             }
         }
 
@@ -378,7 +450,7 @@ app.put("/api/jobs/:id", authenticateToken, async (req, res) => {
         `);
 
         updateJob.run({ 
-            id, title, client, description, status, dueDate, amount, priority, invoiceNotes, 
+            id, title, client, description, status: finalStatus, dueDate, amount, priority, invoiceNotes, 
             assignedTo: finalAssignedTo, clientEmail, 
             depositPaid: depositPaid ? 1 : 0, 
             quoteApproved: quoteApproved !== undefined ? (quoteApproved ? 1 : 0) : null,
@@ -387,7 +459,7 @@ app.put("/api/jobs/:id", authenticateToken, async (req, res) => {
             deliverables: deliverables ? JSON.stringify(deliverables) : null,
             timerStartedAt: finalTimerStartedAt !== undefined ? finalTimerStartedAt : null,
             stageAssignments: stageAssignments ? JSON.stringify(stageAssignments) : (existingJob.stageAssignments || null),
-            timeLogs: timeLogs ? JSON.stringify(timeLogs) : null
+            timeLogs: finalTimeLogs ? (typeof finalTimeLogs === 'string' ? finalTimeLogs : JSON.stringify(finalTimeLogs)) : null
         });
 
         if (tags) {
@@ -412,25 +484,18 @@ app.put("/api/jobs/:id", authenticateToken, async (req, res) => {
         }
 
         // --- NOTIFICATION ---
-        if (statusChanged || (assignedTo && assignedTo !== existingJob.assignedTo)) {
-            const targetUser = assignedTo || existingJob.assignedTo;
-            if (targetUser) {
-                const assignedUser = db.prepare("SELECT id FROM users WHERE name = ? AND account_id = ?").get(targetUser, req.accountId);
-                if (assignedUser) {
-                    createNotification({
-                        userId: assignedUser.id,
-                        title: statusChanged ? "Job Status Updated" : "Job Reassigned",
-                        message: statusChanged 
-                            ? `"${jobTitle}" is now: ${status}`
-                            : `You have been assigned to: "${jobTitle}"`,
-                        type: statusChanged ? "status_change" : "assignment",
-                        accountId: req.accountId
-                    });
-                }
-            }
-        }
+        // (Handled by updateJobStage for status/assignment changes)
 
-        res.json({ success: true });
+        const updatedJob = db.prepare("SELECT * FROM jobs WHERE id = ?").get(id);
+        res.json({
+            ...updatedJob,
+            tags: getJobTags(id),
+            activityLog: getJobActivityLogs(id),
+            lineItems: updatedJob.lineItems ? JSON.parse(updatedJob.lineItems) : [],
+            deliverables: updatedJob.deliverables ? JSON.parse(updatedJob.deliverables) : [],
+            timeLogs: updatedJob.timeLogs ? JSON.parse(updatedJob.timeLogs) : [],
+            stageAssignments: updatedJob.stageAssignments ? JSON.parse(updatedJob.stageAssignments) : {}
+        });
     } catch (error) {
         res.status(500).json({ error: isProduction ? "Internal Server Error" : error.message });
     }
@@ -740,10 +805,10 @@ app.post("/api/portal/:token/approve-quote", (req, res) => {
         const job = db.prepare("SELECT id, account_id FROM jobs WHERE secureToken = ?").get(token);
         if (!job) return res.status(404).json({ error: "Invalid link" });
 
-        db.prepare("UPDATE jobs SET quoteApproved = 1, status = 'in-progress' WHERE id = ?").run(job.id);
+        // Automate stage transition to 'in-progress'
+        updateJobStage(job.id, 'in-progress', job.account_id, 'Client Portal');
 
-        db.prepare("INSERT INTO activity_logs (id, job_id, action, timestamp, user, account_id) VALUES (?, ?, ?, ?, ?, ?)")
-            .run(uuidv4(), job.id, "Quote approved by Client - Job automatically started", new Date().toISOString(), "Client", job.account_id);
+        db.prepare("UPDATE jobs SET quoteApproved = 1 WHERE id = ?").run(job.id);
 
         res.json({ success: true });
     } catch (error) {
@@ -773,9 +838,8 @@ app.post("/api/portal/:token/pay-final", (req, res) => {
         const job = db.prepare("SELECT id, account_id FROM jobs WHERE secureToken = ?").get(token);
         if (!job) return res.status(404).json({ error: "Invalid link" });
 
-        db.prepare("UPDATE jobs SET status = 'paid' WHERE id = ?").run(job.id);
-        db.prepare("INSERT INTO activity_logs (id, job_id, action, timestamp, user, account_id) VALUES (?, ?, ?, ?, ?, ?)")
-            .run(uuidv4(), job.id, "Final payment received via portal", new Date().toISOString(), "Client", job.account_id);
+        // Automate stage transition to 'paid' (this will stop the timer)
+        updateJobStage(job.id, 'paid', job.account_id, 'Client Portal');
 
         res.json({ success: true });
     } catch (error) {

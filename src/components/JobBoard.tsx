@@ -87,20 +87,9 @@ export function JobBoard({
 
       if (!response.ok) throw new Error("Failed to update job status");
 
-      // Optimistically update UI
-      setJobs(
-        jobs.map(j => {
-          if (j.id === jobId) {
-            return {
-              ...j,
-              ...additionalUpdates,
-              status: newStatus,
-              activityLog: [...(j.activityLog || []), newLog]
-            };
-          }
-          return j;
-        })
-      );
+      // Update UI with FULL server response (includes timer rotation, logs, etc)
+      const serverJob = await response.json();
+      setJobs(jobs.map(j => j.id === jobId ? serverJob : j));
     } catch (error) {
       console.error("Failed to move job:", error);
       alert("Failed to update status. The server might be busy. Please try again.");

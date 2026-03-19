@@ -23,7 +23,15 @@ function MainApp() {
   const { user, isLoading: authLoading, logout } = useAuth();
   const [showSignup, setShowSignup] = useState(false);
 
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const [activeTab, setActiveTab] = useState(() => {
+    console.log("Initial Tab: dashboard");
+    return "dashboard";
+  });
+
+  const handleSetTab = (tab: string) => {
+    console.log("Setting Active Tab to:", tab);
+    setActiveTab(tab);
+  };
   const [jobs, setJobs] = useState<Job[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
@@ -154,7 +162,7 @@ function MainApp() {
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 font-sans">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+      <Sidebar activeTab={activeTab} setActiveTab={handleSetTab} />
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden">

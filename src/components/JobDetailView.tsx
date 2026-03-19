@@ -169,7 +169,8 @@ export function JobDetailView({
         body: JSON.stringify(updatedJob)
       });
       if (!response.ok) throw new Error("Failed to update job");
-      onUpdate(updatedJob);
+      const serverJob = await response.json();
+      onUpdate(serverJob);
     } catch (error) {
       console.error("Error updating job:", error);
       alert("Failed to save changes. Please try again.");
