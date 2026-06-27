@@ -1,10 +1,13 @@
 import Database from 'better-sqlite3';
 import { v4 as uuidv4 } from 'uuid';
 
-const db = new Database('data.db'); // Note: in memory could be used with ':memory:' but a file ensures persistence
+const dbPath = process.env.TEST_DB || 'data.db';
+const db = new Database(dbPath); // Note: in memory could be used with ':memory:' but a file ensures persistence
 
 db.pragma('journal_mode = WAL');
 db.pragma('busy_timeout = 5000');
+db.pragma('foreign_keys = ON');
+db.pragma('secure_delete = ON');
 
 // Initialize database schema
 db.exec(`
@@ -139,6 +142,27 @@ try {
     INSERT OR IGNORE INTO accounts (id, name, createdAt) VALUES ('default_account', 'Default Account', CURRENT_TIMESTAMP);
   `);
 
+  // --- Login Lockout Migration ---
+  try {
+    db.exec(`
+      ALTER TABLE users ADD COLUMN failed_login_attempts INTEGER DEFAULT 0;
+      ALTER TABLE users ADD COLUMN locked_until TEXT;
+    `);
+  } catch (e) {
+    // Columns already exist
+  }
+
+  // --- Production Indexes ---
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_jobs_account ON jobs(account_id);
+    CREATE INDEX IF NOT EXISTS idx_users_account ON users(account_id);
+    CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+    CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id);
+    CREATE INDEX IF NOT EXISTS idx_notifications_account ON notifications(account_id);
+    CREATE INDEX IF NOT EXISTS idx_clients_account ON clients(account_id);
+    CREATE INDEX IF NOT EXISTS idx_employees_account ON employees(account_id);
+  `);
+
   // Migrate settings table to support multiple rows
   db.exec(`
     CREATE TABLE IF NOT EXISTS settings_new (
@@ -163,14 +187,75 @@ try {
   }
 
   try { db.exec("ALTER TABLE users ADD COLUMN password_hash TEXT"); } catch(e) {}
+  try { db.exec("ALTER TABLE users ADD COLUMN twoFactorSecret TEXT"); } catch(e) {}
+  try { db.exec("ALTER TABLE users ADD COLUMN twoFactorEnabled INTEGER DEFAULT 0"); } catch(e) {}
   try { db.exec("ALTER TABLE jobs ADD COLUMN quoteApproved INTEGER DEFAULT 0"); } catch(e) {}
   try { db.exec("ALTER TABLE jobs ADD COLUMN lineItems TEXT"); } catch(e) {}
   try { db.exec("ALTER TABLE jobs ADD COLUMN deliverables TEXT"); } catch(e) {}
   try { db.exec("ALTER TABLE jobs ADD COLUMN timerStartedAt TEXT"); } catch(e) {}
   try { db.exec("ALTER TABLE jobs ADD COLUMN stageAssignments TEXT"); } catch(e) {}
   try { db.exec("ALTER TABLE jobs ADD COLUMN timeLogs TEXT"); } catch(e) {}
+
+  // ─── New: accounts status, plan, stripe columns ───────────────────────────
+  try { db.exec("ALTER TABLE accounts ADD COLUMN status TEXT DEFAULT 'active'"); } catch(e) {}
+  try { db.exec("ALTER TABLE accounts ADD COLUMN plan TEXT DEFAULT 'trial'"); } catch(e) {}
+  try { db.exec("ALTER TABLE accounts ADD COLUMN suspendedAt TEXT"); } catch(e) {}
+  try { db.exec("ALTER TABLE accounts ADD COLUMN trialEndsAt TEXT"); } catch(e) {}
+  try { db.exec("ALTER TABLE accounts ADD COLUMN stripeCustomerId TEXT"); } catch(e) {}
+
+  // ─── New: subscriptions table ─────────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS subscriptions (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      stripe_subscription_id TEXT,
+      stripe_customer_id TEXT,
+      status TEXT NOT NULL DEFAULT 'trialing',
+      plan TEXT NOT NULL DEFAULT 'trial',
+      current_period_end TEXT,
+      canceled_at TEXT,
+      createdAt TEXT NOT NULL,
+      FOREIGN KEY(account_id) REFERENCES accounts(id) ON DELETE CASCADE
+    );
+  `);
+
+  // ─── New: super_admins table ──────────────────────────────────────────────
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS super_admins (
+      id TEXT PRIMARY KEY,
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      createdAt TEXT NOT NULL
+    );
+  `);
+
 } catch (e) {
   console.error("Migration error:", e.message);
+}
+
+// ─── Seed super admin from env if not exists ──────────────────────────────────
+import bcrypt from 'bcryptjs';
+const saEmail = process.env.SUPER_ADMIN_EMAIL || 'admin@v79tickit.com';
+const saPassword = process.env.SUPER_ADMIN_PASSWORD || 'AdminPass@2026';
+const existingSA = db.prepare("SELECT id FROM super_admins WHERE email = ?").get(saEmail);
+if (!existingSA) {
+  const saHash = bcrypt.hashSync(saPassword, 10);
+  db.prepare("INSERT INTO super_admins (id, email, password_hash, createdAt) VALUES (?, ?, ?, ?)")
+    .run(uuidv4(), saEmail, saHash, new Date().toISOString());
+  console.log(`✅ Super admin seeded: ${saEmail}`);
+}
+
+// ─── Seed trial subscriptions for existing accounts that have none ────────────
+const trialDays = parseInt(process.env.TRIAL_DAYS || '14');
+const allAccounts = db.prepare("SELECT id, createdAt FROM accounts").all();
+for (const acc of allAccounts) {
+  const hasSub = db.prepare("SELECT id FROM subscriptions WHERE account_id = ?").get(acc.id);
+  if (!hasSub) {
+    const trialEnd = new Date(new Date(acc.createdAt).getTime() + trialDays * 24 * 60 * 60 * 1000).toISOString();
+    db.prepare("INSERT INTO subscriptions (id, account_id, status, plan, current_period_end, createdAt) VALUES (?, ?, 'trialing', 'trial', ?, ?)")
+      .run(uuidv4(), acc.id, trialEnd, new Date().toISOString());
+    db.prepare("UPDATE accounts SET plan = 'trial', trialEndsAt = ? WHERE id = ?").run(trialEnd, acc.id);
+  }
 }
 
 // Check if seeding is needed
@@ -195,7 +280,7 @@ if (jobsCount.count === 0) {
     VALUES (@id, @name, @role, @salary, @hourlyRate, @hoursWorked, @workerType, @paymentMethod, @status, @isCheckedIn, @lastCheckIn)
   `);
 
-  const insertUser = db.prepare('INSERT INTO users (id, name, email, role) VALUES (@id, @name, @email, @role)');
+  const insertUser = db.prepare('INSERT INTO users (id, name, email, role, password_hash) VALUES (@id, @name, @email, @role, @password_hash)');
   const insertPermission = db.prepare('INSERT INTO user_permissions (user_id, permission) VALUES (?, ?)');
 
   const insertFile = db.prepare(`
@@ -255,10 +340,10 @@ if (jobsCount.count === 0) {
     insertEmployee.run({ id: "e2", name: "Bob Jones", role: "Project Manager", salary: 4500, hourlyRate: null, hoursWorked: null, workerType: "salary", paymentMethod: "Bank Transfer", status: "active", isCheckedIn: 0, lastCheckIn: null });
     insertEmployee.run({ id: "e3", name: "Charlie Brown", role: "Developer", salary: 6000, hourlyRate: null, hoursWorked: null, workerType: "salary", paymentMethod: "PayPal", status: "active", isCheckedIn: 0, lastCheckIn: null });
 
-    insertUser.run({ id: "u1", name: "John Doe", email: "john@example.com", role: "Admin" });
+    insertUser.run({ id: "u1", name: "John Doe", email: "john@example.com", role: "Admin", password_hash: "$2b$10$szwsqdFs7AFwmEPci8Gd4.kgSdRQY6Wu17Yj1QmB9afeuPkqtYlPm" });
     ['dashboard', 'jobs', 'new-request', 'payroll', 'invoices', 'users', 'files'].forEach(p => insertPermission.run("u1", p));
 
-    insertUser.run({ id: "u2", name: "Alice Smith", email: "alice@example.com", role: "Manager" });
+    insertUser.run({ id: "u2", name: "Alice Smith", email: "alice@example.com", role: "Manager", password_hash: null });
     ['dashboard', 'jobs', 'new-request', 'files'].forEach(p => insertPermission.run("u2", p));
 
     insertFile.run({ id: "f1", name: "Brand_Guidelines_2024.pdf", size: 2500000, type: "application/pdf", uploadedAt: new Date(Date.now() - 86400000 * 3).toISOString(), uploadedBy: "John Doe", jobId: null });

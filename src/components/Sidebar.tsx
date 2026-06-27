@@ -8,14 +8,18 @@ import {
   CreditCard,
   Users,
   FolderOpen,
+  HelpCircle,
 } from "lucide-react";
+import { SubscriptionBanner } from "./SubscriptionBanner";
 
 export function Sidebar({
   activeTab,
   setActiveTab,
+  onUpgradeClick,
 }: {
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  onUpgradeClick: () => void;
 }) {
   return (
     <aside className="w-64 bg-white border-r border-slate-200 flex flex-col">
@@ -82,7 +86,20 @@ export function Sidebar({
           active={activeTab === "settings"}
           onClick={() => setActiveTab("settings")}
         />
+        <NavItem
+          icon={<Users />}
+          label="My Profile"
+          active={activeTab === "profile"}
+          onClick={() => setActiveTab("profile")}
+        />
+        <NavItem
+          icon={<HelpCircle />}
+          label="Help Center"
+          active={activeTab === "help"}
+          onClick={() => setActiveTab("help")}
+        />
       </nav>
+      <SubscriptionBanner onUpgradeClick={onUpgradeClick} />
       <div className="p-4 border-t border-slate-100">
         <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
           <p className="text-xs font-medium text-slate-500 mb-2 uppercase tracking-wider">

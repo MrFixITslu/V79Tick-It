@@ -6,9 +6,10 @@ interface User {
   email: string;
   role: string;
   account_id: string;
+  twoFactorEnabled?: number;
 }
 
-interface AuthContextType {
+export interface AuthContextType {
   user: User | null;
   token: string | null;
   login: (token: string, user: User) => void;

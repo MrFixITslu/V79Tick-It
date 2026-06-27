@@ -5,14 +5,22 @@ import { Sidebar } from "./components/Sidebar";
 import { JobDetailView } from "./components/JobDetailView";
 import { JobRequestForm } from "./components/JobRequestForm";
 import { Dashboard } from "./components/Dashboard";
-import { Payroll } from "./components/Payroll";
-import { UserManagement } from "./components/UserManagement";
-import { FileRepository } from "./components/FileRepository";
-import { Invoices } from "./components/Invoices";
+
+const Payroll = React.lazy(() => import("./components/Payroll").then(m => ({ default: m.Payroll })));
+const UserManagement = React.lazy(() => import("./components/UserManagement").then(m => ({ default: m.UserManagement })));
+const FileRepository = React.lazy(() => import("./components/FileRepository").then(m => ({ default: m.FileRepository })));
+const Invoices = React.lazy(() => import("./components/Invoices").then(m => ({ default: m.Invoices })));
+
 import { Settings, BusinessSettings } from "./components/Settings";
 import { ClientPortal } from "./components/ClientPortal";
 import { Clients } from "./components/Clients";
+import { MyProfile } from "./components/MyProfile";
 import { NotificationDropdown, Notification } from "./components/NotificationDropdown";
+import { AccountSuspended } from "./components/AccountSuspended";
+import { SuperAdminLogin } from "./components/SuperAdminLogin";
+import { SuperAdminPortal } from "./components/SuperAdminPortal";
+import { SubscriptionPlans } from "./components/SubscriptionPlans";
+import { Help } from "./components/Help";
 import { Job, Employee, PayrollRecord, AppUser, FileItem } from "./types";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { Login } from "./components/Login";
@@ -22,6 +30,8 @@ import { apiFetch } from "./lib/api";
 function MainApp() {
   const { user, isLoading: authLoading, logout } = useAuth();
   const [showSignup, setShowSignup] = useState(false);
+  const [isSuspended, setIsSuspended] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
 
   const [activeTab, setActiveTab] = useState(() => {
     console.log("Initial Tab: dashboard");
@@ -51,6 +61,7 @@ function MainApp() {
     try {
       const [jobsRes, employeesRes, settingsRes] = await Promise.all([
         apiFetch("/api/jobs").then(res => {
+          if (res.status === 402) { setIsSuspended(true); throw new Error("suspended"); }
           if (!res.ok) throw new Error("Failed to fetch jobs");
           return res.json();
         }),
@@ -68,6 +79,7 @@ function MainApp() {
       setEmployees(employeesRes);
       setSettings(settingsRes);
     } catch (err: any) {
+      if (err.message === "suspended") return;
       console.error("Error fetching data:", err);
       setError(err.message || "Failed to load application data. Please check your connection.");
     } finally {
@@ -133,6 +145,10 @@ function MainApp() {
     return showSignup ? <Signup onSwitchToLogin={() => setShowSignup(false)} /> : <Login onSwitchToSignup={() => setShowSignup(true)} />;
   }
 
+  if (isSuspended) {
+    return <AccountSuspended onLogout={logout} />;
+  }
+
   if (error) {
     return (
       <div className="flex h-screen flex-col items-center justify-center bg-slate-50 p-8 text-center">
@@ -162,7 +178,9 @@ function MainApp() {
 
   return (
     <div className="flex h-screen bg-slate-50 text-slate-900 font-sans">
-      <Sidebar activeTab={activeTab} setActiveTab={handleSetTab} />
+      <Sidebar activeTab={activeTab} setActiveTab={handleSetTab} onUpgradeClick={() => setShowUpgrade(true)} />
+
+      {showUpgrade && <SubscriptionPlans onClose={() => setShowUpgrade(false)} />}
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden">
@@ -204,9 +222,13 @@ function MainApp() {
                 <span className="text-sm font-bold text-slate-900">{user.name}</span>
                 <span className="text-xs text-slate-500">{user.role}</span>
               </div>
-              <div className="w-8 h-8 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-semibold text-sm">
+              <button 
+                onClick={() => setActiveTab("profile")}
+                className="w-8 h-8 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-semibold text-sm hover:ring-2 hover:ring-indigo-500 hover:ring-offset-2 transition-all"
+                title="My Profile"
+              >
                 {user.name.charAt(0)}
-              </div>
+              </button>
               <button onClick={logout} title="Log out" className="ml-2 text-slate-400 hover:text-red-500 transition-colors p-2 rounded-lg hover:bg-red-50">
                 <LogOut className="w-5 h-5"/>
               </button>
@@ -230,72 +252,83 @@ function MainApp() {
             </div>
           ) : (
             <div className="flex-1 overflow-auto p-8">
-              {activeTab === "dashboard" && <Dashboard jobs={jobs} />}
-              {activeTab === "jobs" && (
-                <JobBoard
-                  jobs={jobs}
-                  setJobs={setJobs}
-                  employees={employees}
-                  settings={settings}
-                  onSelectJob={setSelectedJobId}
-                />
-              )}
-              {activeTab === "payroll" && (
-                <Payroll
-                  employees={employees}
-                  setEmployees={setEmployees}
-                  payrollRecords={payrollRecords}
-                  setPayrollRecords={setPayrollRecords}
-                />
-              )}
-              {activeTab === "users" && (
-                <UserManagement users={users} setUsers={setUsers} />
-              )}
-              {activeTab === "files" && (
-                <FileRepository files={files} setFiles={setFiles} />
-              )}
-              {activeTab === "invoices" && (
-                <Invoices
-                  jobs={jobs}
-                  setJobs={setJobs}
-                  employees={employees}
-                  settings={settings}
-                  onSelectJob={setSelectedJobId}
-                />
-              )}
-              {activeTab === "settings" && (
-                <Settings settings={settings} setSettings={setSettings} />
-              )}
-              {activeTab === "clients" && <Clients />}
-              {activeTab === "new-request" && (
-                <div className="max-w-4xl mx-auto">
-                  <JobRequestForm
-                    employees={employees}
-                    onSave={async (jobData) => {
-                      try {
-                        const newId = crypto.randomUUID();
-                        const response = await apiFetch('/api/jobs', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            ...jobData,
-                            id: newId,
-                            createdAt: new Date().toISOString()
-                          })
-                        });
-                        if (response.ok) {
-                          const newJob = await response.json();
-                          setJobs([newJob, ...jobs]);
-                          setActiveTab("jobs");
-                        }
-                      } catch (error) {
-                        console.error("Error creating job:", error);
-                      }
-                    }}
-                  />
+              <React.Suspense fallback={
+                <div className="flex h-full items-center justify-center text-slate-400 gap-2 animate-pulse">
+                  <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full"></div>
+                  <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full"></div>
+                  <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full"></div>
                 </div>
-              )}
-              {!["dashboard", "jobs", "payroll", "users", "files", "invoices", "settings", "clients", "new-request"].includes(activeTab) && (
+              }>
+                {activeTab === "dashboard" && <Dashboard jobs={jobs} />}
+                {activeTab === "jobs" && (
+                  <JobBoard
+                    jobs={jobs}
+                    setJobs={setJobs}
+                    employees={employees}
+                    settings={settings}
+                    onSelectJob={setSelectedJobId}
+                  />
+                )}
+                {activeTab === "payroll" && (
+                  <Payroll
+                    employees={employees}
+                    setEmployees={setEmployees}
+                    payrollRecords={payrollRecords}
+                    setPayrollRecords={setPayrollRecords}
+                  />
+                )}
+                {activeTab === "users" && (
+                  <UserManagement users={users} setUsers={setUsers} />
+                )}
+                {activeTab === "files" && (
+                  <FileRepository files={files} setFiles={setFiles} />
+                )}
+                {activeTab === "invoices" && (
+                  <Invoices
+                    jobs={jobs}
+                    setJobs={setJobs}
+                    employees={employees}
+                    settings={settings}
+                    onSelectJob={setSelectedJobId}
+                  />
+                )}
+                {activeTab === "settings" && (
+                  <Settings settings={settings} setSettings={setSettings} />
+                )}
+                {activeTab === "clients" && <Clients />}
+                {activeTab === "new-request" && (
+                  <div className="max-w-4xl mx-auto">
+                    <JobRequestForm
+                      employees={employees}
+                      onSave={async (jobData) => {
+                        try {
+                          const newId = crypto.randomUUID();
+                          const response = await apiFetch('/api/jobs', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              ...jobData,
+                              id: newId,
+                              createdAt: new Date().toISOString()
+                            })
+                          });
+                          if (response.ok) {
+                            const newJob = await response.json();
+                            setJobs([newJob, ...jobs]);
+                            setActiveTab("jobs");
+                          }
+                        } catch (error) {
+                          console.error("Error creating job:", error);
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+                {activeTab === "profile" && <MyProfile />}
+                {activeTab === "help" && <Help />}
+              </React.Suspense>
+              
+              {!["dashboard", "jobs", "payroll", "users", "files", "invoices", "settings", "clients", "new-request", "profile", "help"].includes(activeTab) && (
                 <div className="flex items-center justify-center h-full text-slate-400">
                   {activeTab} content coming soon
                 </div>
@@ -311,6 +344,7 @@ function MainApp() {
 export default function App() {
   const params = new URLSearchParams(window.location.search);
   const queryToken = params.get("token");
+  const isSuperAdmin = params.get("superadmin") === "true";
   
   // Also check pathname for /portal/TOKEN format
   const pathParts = window.location.pathname.split('/portal/');
@@ -322,9 +356,37 @@ export default function App() {
     return <ClientPortal token={token} />;
   }
 
+  // Super Admin Portal
+  if (isSuperAdmin) {
+    return <SuperAdminApp />;
+  }
+
   return (
     <AuthProvider>
       <MainApp />
     </AuthProvider>
   );
 }
+
+// ─── Super Admin App Shell ─────────────────────────────────────────────────
+function SuperAdminApp() {
+  const [saToken, setSaToken] = React.useState<string | null>(null);
+  const [saAdmin, setSaAdmin] = React.useState<{ id: string; email: string } | null>(null);
+
+  const handleSALogin = (token: string, admin: { id: string; email: string }) => {
+    setSaToken(token);
+    setSaAdmin(admin);
+  };
+
+  const handleSALogout = () => {
+    setSaToken(null);
+    setSaAdmin(null);
+  };
+
+  if (!saToken || !saAdmin) {
+    return <SuperAdminLogin onLogin={handleSALogin} />;
+  }
+
+  return <SuperAdminPortal admin={saAdmin} onLogout={handleSALogout} />;
+}
+

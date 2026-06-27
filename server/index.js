@@ -6,6 +6,8 @@ import { sendPortalLink, sendStatusUpdate } from "./email.js";
 import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import speakeasy from "speakeasy";
+import qrcode from "qrcode";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import compression from "compression";
@@ -13,6 +15,18 @@ import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs";
 import multer from "multer";
+import { registerStripeRoutes } from "./stripe.js";
+import { registerHealthCheck } from "./healthcheck.js";
+import { logger } from "./logger.js";
+import { 
+    sanitizeString, 
+    sanitizeObject, 
+    isValidEmail, 
+    isValidUUID, 
+    secureFilePath,
+    validatePassword,
+    badRequest 
+} from "./security.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -21,23 +35,94 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 const isProduction = process.env.NODE_ENV === "production";
 
-if (isProduction && !process.env.JWT_SECRET) {
-    console.warn("WARNING: JWT_SECRET environment variable is not set in production. Using insecure fallback.");
+registerHealthCheck(app);
+
+const JWT_SECRET = process.env.JWT_SECRET;
+const SA_JWT_SECRET = process.env.SUPER_ADMIN_JWT_SECRET;
+
+if (isProduction && (!JWT_SECRET || !SA_JWT_SECRET)) {
+    console.error("FATAL: JWT_SECRET or SUPER_ADMIN_JWT_SECRET not set in production.");
+    process.exit(1);
 }
-const JWT_SECRET = process.env.JWT_SECRET || "auvic-super-secret-jwt-key-2026";
+
+// ── Security Middleware ───────────────────────────────────────────────────
 
 app.use(helmet({
-    contentSecurityPolicy: false // Disable CSP for now to allow external images/scripts unless explicitly configured
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+            imgSrc: ["'self'", "data:", "https:", "http:"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com"],
+            connectSrc: ["'self'"],
+            objectSrc: ["'none'"],
+            upgradeInsecureRequests: [],
+        },
+    }
 }));
+
 app.use(compression());
-app.use(cors());
-app.use(express.json());
+
+// Lockdown CORS to allowlist in production
+const allowedOrigins = process.env.ALLOWED_ORIGINS 
+    ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim())
+    : ['http://localhost:5174', 'http://127.0.0.1:5174'];
+
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin) || !isProduction) {
+            callback(null, true);
+        } else {
+            logger.warn(`CORS blocked request from origin: ${origin}`);
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true
+}));
+
+app.use(express.json({ limit: '1mb' }));
 
 // --- FILE REPOSITORY SETUP ---
 const UPLOADS_ROOT = path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(UPLOADS_ROOT)) fs.mkdirSync(UPLOADS_ROOT, { recursive: true });
-// Serve uploaded files statically (authenticated routes are below, this is just raw file access)
-app.use('/uploads', express.static(UPLOADS_ROOT));
+// Serve uploaded files statically ONLY IN DEVELOPMENT
+if (!isProduction) {
+    app.use('/uploads', express.static(UPLOADS_ROOT));
+}
+
+/**
+ * SECURE FILE SERVING
+ * All file access in production must go through this authenticated route.
+ */
+app.get('/api/files/:accountId/*', authenticateToken, (req, res) => {
+    const { accountId } = req.params;
+    const relativePath = req.params[0];
+
+    // Auth parity check: token must match requested account's files
+    if (req.accountId !== accountId) {
+        logger.audit('file_access_denied', { 
+            userId: req.user.id, 
+            requestedAccountId: accountId, 
+            actualAccountId: req.accountId 
+        });
+        return res.status(403).json({ error: "Access denied to this account's files" });
+    }
+
+    const safePath = secureFilePath(UPLOADS_ROOT, accountId, path.join(accountId, relativePath));
+    if (!safePath || !fs.existsSync(safePath)) {
+        return res.status(404).json({ error: "File not found" });
+    }
+
+    // Security: Only allow safe file types to be served
+    const ext = path.extname(safePath).toLowerCase();
+    const ALLOWED_EXTS = ['.png', '.jpg', '.jpeg', '.pdf', '.docx', '.json', '.txt', '.zip'];
+    if (!ALLOWED_EXTS.includes(ext)) {
+        return res.status(403).json({ error: "File type not permitted" });
+    }
+
+    res.sendFile(safePath);
+});
 
 /**
  * Sanitize a string for use as a folder or file name component.
@@ -92,13 +177,30 @@ const saveQuoteSnapshot = (accountId, clientName, jobId, jobData) => {
 };
 
 const apiLimiter = rateLimit({
-    windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 100, // Limit each IP to 100 requests per `window`
+    windowMs: 15 * 60 * 1000, 
+    max: 200, 
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many requests from this IP, please try again after 15 minutes." }
+});
+
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 15, // Stricter for auth
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: "Too many login attempts, please try again after 15 minutes." }
+});
+
+const uploadLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 30, // 30 uploads per 15 mins
     standardHeaders: true,
     legacyHeaders: false,
 });
 
-app.use("/api/auth", apiLimiter);
+app.use("/api/auth", authLimiter);
+app.use("/api/", apiLimiter);
 
 // --- Authentication Middleware ---
 const authenticateToken = (req, res, next) => {
@@ -110,24 +212,53 @@ const authenticateToken = (req, res, next) => {
         if (err) return res.status(403).json({ error: "Forbidden" });
         req.user = user;
         req.accountId = user.account_id;
+
+        // ─── Suspension Check ─────────────────────────────────────────────
+        try {
+            const account = db.prepare("SELECT status FROM accounts WHERE id = ?").get(user.account_id);
+            if (account && account.status === 'suspended') {
+                return res.status(402).json({ error: "ACCOUNT_SUSPENDED", message: "This account has been suspended. Please contact support." });
+            }
+        } catch (e) {
+            // Non-fatal: continue if accounts table check fails
+        }
+
+        next();
+    });
+};
+
+// --- Super Admin Middleware ---
+const superAdminMiddleware = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) return res.status(401).json({ error: "Unauthorized" });
+
+    jwt.verify(token, SA_JWT_SECRET, (err, decoded) => {
+        if (err || !decoded.isSuperAdmin) return res.status(403).json({ error: "Forbidden: Super Admin access required" });
+        req.superAdmin = decoded;
         next();
     });
 };
 
 // --- AUTHENTICATION ROUTES ---
 app.post("/api/auth/register", async (req, res) => {
-    const { name, email, password, companyName } = req.body;
+    const { name, email, password, companyName } = sanitizeObject(req.body);
     if (!name || !email || !password || !companyName) {
-        return res.status(400).json({ error: "All fields are required" });
+        return badRequest(res, "All fields are required");
     }
+
+    if (!isValidEmail(email)) return badRequest(res, "Invalid email format");
+    
+    const pwError = validatePassword(password);
+    if (pwError) return badRequest(res, pwError);
 
     try {
         const existingUser = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
-        if (existingUser) return res.status(400).json({ error: "Email already exists" });
+        if (existingUser) return badRequest(res, "Email already exists");
 
         const accountId = uuidv4();
         const userId = uuidv4();
-        const hashedPassword = await bcrypt.hash(password, 10);
+        const hashedPassword = await bcrypt.hash(password, 12); // Increased rounds for production
         
         const registerTx = db.transaction(() => {
             db.prepare("INSERT INTO accounts (id, name, createdAt) VALUES (?, ?, ?)").run(accountId, companyName, new Date().toISOString());
@@ -136,35 +267,153 @@ app.post("/api/auth/register", async (req, res) => {
         });
         registerTx();
 
-        const token = jwt.sign({ id: userId, email, account_id: accountId }, JWT_SECRET, { expiresIn: '7d' });
+        logger.audit('user_registered', { userId, email, accountId });
+
+        const token = jwt.sign({ id: userId, email, account_id: accountId }, JWT_SECRET, { expiresIn: '8h' });
         res.status(201).json({ token, user: { id: userId, name, email, role: "Admin", account_id: accountId } });
     } catch (e) {
-        res.status(500).json({ error: isProduction ? "Internal Server Error" : e.message });
+        logger.error(`Registration error: ${e.message}`);
+        res.status(500).json({ error: "Internal Server Error" });
     }
 });
 
 app.post("/api/auth/login", async (req, res) => {
-    const { email, password } = req.body;
+    const { email, password } = sanitizeObject(req.body);
+    if (!email || !password) return badRequest(res, "Email and password required");
+
     try {
         const user = db.prepare("SELECT * FROM users WHERE email = ?").get(email);
-        if (!user || !user.password_hash) return res.status(400).json({ error: "Invalid credentials" });
+        if (!user || !user.password_hash) {
+            // Constant time-ish delay or generic response to prevent timing attacks/enumeration
+            return res.status(400).json({ error: "Invalid credentials" });
+        }
+
+        // --- Brute Force Protection ---
+        if (user.locked_until && new Date(user.locked_until) > new Date()) {
+            logger.audit('login_locked', { email });
+            return res.status(423).json({ error: "Account locked due to too many failed attempts. Try again later." });
+        }
 
         const validPassword = await bcrypt.compare(password, user.password_hash);
-        if (!validPassword) return res.status(400).json({ error: "Invalid credentials" });
+        
+        if (!validPassword) {
+            const attempts = (user.failed_login_attempts || 0) + 1;
+            let lockedUntil = null;
+            
+            if (attempts >= 10) {
+                // Lock for 15 minutes after 10 fails
+                lockedUntil = new Date(Date.now() + 15 * 60000).toISOString();
+                logger.audit('user_locked', { email, userId: user.id });
+            }
 
-        const token = jwt.sign({ id: user.id, email: user.email, account_id: user.account_id }, JWT_SECRET, { expiresIn: '7d' });
-        delete user.password_hash;
-        res.json({ token, user });
+            db.prepare("UPDATE users SET failed_login_attempts = ?, locked_until = ? WHERE id = ?")
+              .run(attempts, lockedUntil, user.id);
+
+            return res.status(400).json({ error: "Invalid credentials" });
+        }
+
+        // Success: Reset failed attempts
+        db.prepare("UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?")
+          .run(user.id);
+
+        if (user.twoFactorEnabled === 1) {
+            const tempToken = jwt.sign({ id: user.id, isTemp2FA: true }, JWT_SECRET, { expiresIn: '5m' });
+            return res.json({ requires2FA: true, tempToken });
+        }
+
+        const token = jwt.sign({ id: user.id, email: user.email, account_id: user.account_id }, JWT_SECRET, { expiresIn: '8h' });
+        
+        logger.audit('login_success', { userId: user.id, email: user.email });
+
+        // Strip sensitive data
+        const { password_hash, twoFactorSecret, ...safeUser } = user;
+        res.json({ token, user: safeUser });
     } catch (e) {
-        res.status(500).json({ error: isProduction ? "Internal Server Error" : e.message });
+        logger.error(`Login error: ${e.message}`);
+        res.status(500).json({ error: "Internal Server Error" });
     }
+});
+
+app.post("/api/auth/login/2fa", (req, res) => {
+    const { tempToken, code } = req.body;
+    if (!tempToken || !code) return res.status(400).json({ error: "Missing token or code" });
+
+    jwt.verify(tempToken, JWT_SECRET, (err, decoded) => {
+        if (err || !decoded.isTemp2FA) return res.status(403).json({ error: "Invalid or expired temporary token" });
+
+        const user = db.prepare("SELECT * FROM users WHERE id = ?").get(decoded.id);
+        if (!user || user.twoFactorEnabled !== 1 || !user.twoFactorSecret) {
+            return res.status(400).json({ error: "2FA is not properly set up for this user" });
+        }
+
+        const verified = speakeasy.totp.verify({
+            secret: user.twoFactorSecret,
+            encoding: 'base32',
+            token: code,
+            window: 1
+        });
+
+        if (!verified) return res.status(400).json({ error: "Invalid 2FA code" });
+
+        const token = jwt.sign({ id: user.id, email: user.email, account_id: user.account_id }, JWT_SECRET, { expiresIn: '1d' });
+        delete user.password_hash;
+        delete user.twoFactorSecret;
+        res.json({ token, user });
+    });
 });
 
 app.get("/api/auth/me", authenticateToken, (req, res) => {
     try {
-        const user = db.prepare("SELECT id, name, email, role, account_id FROM users WHERE id = ? AND account_id = ?").get(req.user.id, req.accountId);
+        const user = db.prepare("SELECT id, name, email, role, account_id, twoFactorEnabled FROM users WHERE id = ? AND account_id = ?").get(req.user.id, req.accountId);
         if (!user) return res.status(404).json({ error: "User not found" });
         res.json(user);
+    } catch (error) {
+        res.status(500).json({ error: isProduction ? "Internal Server Error" : error.message });
+    }
+});
+
+// 2FA Setup endpoints
+app.post("/api/auth/2fa/generate", authenticateToken, async (req, res) => {
+    try {
+        const secret = speakeasy.generateSecret({ name: `Auvic (${req.user.email})` });
+        const dataUrl = await qrcode.toDataURL(secret.otpauth_url);
+        
+        db.prepare("UPDATE users SET twoFactorSecret = ? WHERE id = ?").run(secret.base32, req.user.id);
+        
+        res.json({ secret: secret.base32, qrCode: dataUrl });
+    } catch (error) {
+        res.status(500).json({ error: isProduction ? "Internal Server Error" : error.message });
+    }
+});
+
+app.post("/api/auth/2fa/verify", authenticateToken, (req, res) => {
+    const { code } = req.body;
+    try {
+        const user = db.prepare("SELECT twoFactorSecret FROM users WHERE id = ?").get(req.user.id);
+        if (!user || !user.twoFactorSecret) return res.status(400).json({ error: "No 2FA secret found. Generate one first." });
+        
+        const verified = speakeasy.totp.verify({
+            secret: user.twoFactorSecret,
+            encoding: 'base32',
+            token: code,
+            window: 1
+        });
+        
+        if (verified) {
+            db.prepare("UPDATE users SET twoFactorEnabled = 1 WHERE id = ?").run(req.user.id);
+            res.json({ success: true });
+        } else {
+            res.status(400).json({ error: "Invalid validation code" });
+        }
+    } catch (error) {
+        res.status(500).json({ error: isProduction ? "Internal Server Error" : error.message });
+    }
+});
+
+app.post("/api/auth/2fa/disable", authenticateToken, (req, res) => {
+    try {
+        db.prepare("UPDATE users SET twoFactorEnabled = 0, twoFactorSecret = NULL WHERE id = ?").run(req.user.id);
+        res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: isProduction ? "Internal Server Error" : error.message });
     }
@@ -866,6 +1115,150 @@ app.post("/api/portal/:token/messages", (req, res) => {
 });
 
 
+// ══════════════════════════════════════════════════════════════════════════════
+// SUPER ADMIN ROUTES
+// ══════════════════════════════════════════════════════════════════════════════
+
+const saLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 30 });
+
+// POST /api/superadmin/login
+app.post('/api/superadmin/login', saLimiter, async (req, res) => {
+    const { email, password } = req.body;
+    if (!email || !password) return res.status(400).json({ error: 'Email and password required' });
+    try {
+        const admin = db.prepare("SELECT * FROM super_admins WHERE email = ?").get(email);
+        if (!admin) return res.status(401).json({ error: 'Invalid credentials' });
+        const valid = await bcrypt.compare(password, admin.password_hash);
+        if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
+        const token = jwt.sign({ id: admin.id, email: admin.email, isSuperAdmin: true }, SA_JWT_SECRET, { expiresIn: '8h' });
+        res.json({ token, admin: { id: admin.id, email: admin.email } });
+    } catch (e) {
+        res.status(500).json({ error: isProduction ? 'Internal Server Error' : e.message });
+    }
+});
+
+// GET /api/superadmin/stats
+app.get('/api/superadmin/stats', superAdminMiddleware, (req, res) => {
+    try {
+        const totalAccounts = db.prepare("SELECT count(*) as c FROM accounts").get().c;
+        const activeAccounts = db.prepare("SELECT count(*) as c FROM accounts WHERE status = 'active'").get().c;
+        const suspendedAccounts = db.prepare("SELECT count(*) as c FROM accounts WHERE status = 'suspended'").get().c;
+        const totalUsers = db.prepare("SELECT count(*) as c FROM users").get().c;
+        const totalJobs = db.prepare("SELECT count(*) as c FROM jobs").get().c;
+        const activeSubs = db.prepare("SELECT count(*) as c FROM subscriptions WHERE status = 'active'").get().c;
+        const trialSubs = db.prepare("SELECT count(*) as c FROM subscriptions WHERE status = 'trialing'").get().c;
+        const canceledSubs = db.prepare("SELECT count(*) as c FROM subscriptions WHERE status = 'canceled'").get().c;
+        // MRR: sum plan prices for active subscriptions
+        const planPrices = { starter: 29, pro: 79, enterprise: 199, trial: 0 };
+        const activePlans = db.prepare("SELECT plan, count(*) as c FROM subscriptions WHERE status = 'active' GROUP BY plan").all();
+        const mrr = activePlans.reduce((sum, row) => sum + (planPrices[row.plan] || 0) * row.c, 0);
+        const newSignups30d = db.prepare("SELECT count(*) as c FROM accounts WHERE createdAt >= datetime('now', '-30 days')").get().c;
+
+        res.json({ totalAccounts, activeAccounts, suspendedAccounts, totalUsers, totalJobs, activeSubs, trialSubs, canceledSubs, mrr, newSignups30d });
+    } catch (e) {
+        res.status(500).json({ error: isProduction ? 'Internal Server Error' : e.message });
+    }
+});
+
+// GET /api/superadmin/accounts
+app.get('/api/superadmin/accounts', superAdminMiddleware, (req, res) => {
+    try {
+        const accounts = db.prepare("SELECT * FROM accounts ORDER BY createdAt DESC").all();
+        const enriched = accounts.map(acc => {
+            const sub = db.prepare("SELECT * FROM subscriptions WHERE account_id = ? ORDER BY createdAt DESC LIMIT 1").get(acc.id);
+            const userCount = db.prepare("SELECT count(*) as c FROM users WHERE account_id = ?").get(acc.id).c;
+            const jobCount = db.prepare("SELECT count(*) as c FROM jobs WHERE account_id = ?").get(acc.id).c;
+            const settings = db.prepare("SELECT name, email, logoUrl FROM settings WHERE account_id = ? LIMIT 1").get(acc.id);
+            return { ...acc, subscription: sub || null, userCount, jobCount, settings: settings || {} };
+        });
+        res.json(enriched);
+    } catch (e) {
+        res.status(500).json({ error: isProduction ? 'Internal Server Error' : e.message });
+    }
+});
+
+// GET /api/superadmin/accounts/:id
+app.get('/api/superadmin/accounts/:id', superAdminMiddleware, (req, res) => {
+    try {
+        const acc = db.prepare("SELECT * FROM accounts WHERE id = ?").get(req.params.id);
+        if (!acc) return res.status(404).json({ error: 'Account not found' });
+        const sub = db.prepare("SELECT * FROM subscriptions WHERE account_id = ? ORDER BY createdAt DESC LIMIT 1").get(acc.id);
+        const users = db.prepare("SELECT id, name, email, role, twoFactorEnabled FROM users WHERE account_id = ?").all(acc.id);
+        const jobs = db.prepare("SELECT id, title, status, amount, createdAt FROM jobs WHERE account_id = ? ORDER BY createdAt DESC LIMIT 20").all(acc.id);
+        const settings = db.prepare("SELECT * FROM settings WHERE account_id = ? LIMIT 1").get(acc.id);
+        res.json({ ...acc, subscription: sub || null, users, recentJobs: jobs, settings: settings || {} });
+    } catch (e) {
+        res.status(500).json({ error: isProduction ? 'Internal Server Error' : e.message });
+    }
+});
+
+// PUT /api/superadmin/accounts/:id/suspend
+app.put('/api/superadmin/accounts/:id/suspend', superAdminMiddleware, (req, res) => {
+    try {
+        db.prepare("UPDATE accounts SET status = 'suspended', suspendedAt = ? WHERE id = ?").run(new Date().toISOString(), req.params.id);
+        res.json({ success: true, message: 'Account suspended' });
+    } catch (e) {
+        res.status(500).json({ error: isProduction ? 'Internal Server Error' : e.message });
+    }
+});
+
+// PUT /api/superadmin/accounts/:id/unsuspend
+app.put('/api/superadmin/accounts/:id/unsuspend', superAdminMiddleware, (req, res) => {
+    try {
+        db.prepare("UPDATE accounts SET status = 'active', suspendedAt = NULL WHERE id = ?").run(req.params.id);
+        res.json({ success: true, message: 'Account unsuspended' });
+    } catch (e) {
+        res.status(500).json({ error: isProduction ? 'Internal Server Error' : e.message });
+    }
+});
+
+// DELETE /api/superadmin/accounts/:id
+app.delete('/api/superadmin/accounts/:id', superAdminMiddleware, (req, res) => {
+    const { id } = req.params;
+    if (id === 'default_account') return res.status(403).json({ error: 'Cannot delete the default account' });
+    try {
+        const tables = ['jobs', 'job_tags', 'activity_logs', 'employees', 'users', 'user_permissions', 'files', 'clients', 'job_messages', 'notifications', 'settings', 'subscriptions'];
+        db.transaction(() => {
+            for (const t of tables) {
+                try { db.prepare(`DELETE FROM ${t} WHERE account_id = ?`).run(id); } catch(e) {}
+            }
+            db.prepare("DELETE FROM accounts WHERE id = ?").run(id);
+        })();
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: isProduction ? 'Internal Server Error' : e.message });
+    }
+});
+
+// GET /api/superadmin/subscriptions
+app.get('/api/superadmin/subscriptions', superAdminMiddleware, (req, res) => {
+    try {
+        const subs = db.prepare("SELECT s.*, a.name as accountName, a.status as accountStatus FROM subscriptions s LEFT JOIN accounts a ON s.account_id = a.id ORDER BY s.createdAt DESC").all();
+        res.json(subs);
+    } catch (e) {
+        res.status(500).json({ error: isProduction ? 'Internal Server Error' : e.message });
+    }
+});
+
+// PUT /api/superadmin/accounts/:id/change-plan
+app.put('/api/superadmin/accounts/:id/change-plan', superAdminMiddleware, (req, res) => {
+    const { plan } = req.body;
+    const validPlans = ['trial', 'starter', 'pro', 'enterprise'];
+    if (!validPlans.includes(plan)) return res.status(400).json({ error: 'Invalid plan' });
+    try {
+        db.prepare("UPDATE accounts SET plan = ? WHERE id = ?").run(plan, req.params.id);
+        db.prepare("UPDATE subscriptions SET plan = ? WHERE account_id = ?").run(plan, req.params.id);
+        res.json({ success: true });
+    } catch (e) {
+        res.status(500).json({ error: isProduction ? 'Internal Server Error' : e.message });
+    }
+});
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STRIPE ROUTES
+// ══════════════════════════════════════════════════════════════════════════════
+registerStripeRoutes(app, authenticateToken);
+
 // Serve static frontend files in production
 if (isProduction) {
     app.use(express.static(path.join(__dirname, '../dist')));
@@ -874,13 +1267,16 @@ if (isProduction) {
     });
 }
 
-app.listen(PORT, () => {
-    console.log(`Backend server running on port ${PORT}`);
+// Purge logs older than 30 days on startup
+logger.rotateLogs(30);
+
+app.listen(PORT, '0.0.0.0', () => {
+    logger.info(`Backend server running on port ${PORT} in ${isProduction ? 'production' : 'development'} mode`);
 }).on('error', (err) => {
     if (err.code === 'EADDRINUSE') {
-        console.error(`Port ${PORT} is already in use. Please run 'fuser -k ${PORT}/tcp' or choose a different port.`);
+        logger.error(`Port ${PORT} is already in use.`);
         process.exit(1);
     } else {
-        console.error(err);
+        logger.error(`Server error: ${err.message}`);
     }
 });

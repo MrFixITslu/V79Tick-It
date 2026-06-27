@@ -5,6 +5,8 @@ import { defineConfig, loadEnv } from 'vite';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
+  const isProd = mode === 'production';
+
   return {
     plugins: [react(), tailwindcss()],
     define: {
@@ -24,6 +26,24 @@ export default defineConfig(({ mode }) => {
         '/api': 'http://127.0.0.1:3001',
       },
     },
+    build: {
+      outDir: 'dist',
+      sourcemap: !isProd,
+      minify: isProd ? 'terser' : 'esbuild',
+      terserOptions: isProd ? {
+        compress: {
+          drop_console: true,
+          drop_debugger: true,
+        },
+      } : undefined,
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            vendor: ['react', 'react-dom', 'lucide-react', 'recharts', 'motion'],
+          },
+        },
+      },
+      chunkSizeWarningLimit: 1000,
+    },
   };
 });
-
