@@ -43,15 +43,15 @@ export interface JobNote {
   user: string;
 }
 
-export interface JobMessage {
-  id: string;
-  job_id: string;
-  sender: string;
-  content: string;
-  timestamp: string;
-}
-
 export type WorkerType = "salary" | "hourly" | "bi-weekly";
+
+export interface TimeCard {
+  id: string;
+  date: string;
+  clockIn: string;
+  clockOut: string;
+  hoursWorked: number;
+}
 
 export interface Employee {
   id: string;
@@ -65,6 +65,7 @@ export interface Employee {
   status: "active" | "inactive";
   isCheckedIn?: boolean;
   lastCheckIn?: string;
+  timeCards?: TimeCard[];
 }
 
 export interface PayrollRecord {
@@ -76,18 +77,21 @@ export interface PayrollRecord {
   status: "pending" | "paid";
 }
 
-export interface TimeLog {
+export interface Client {
   id: string;
-  employeeId: string;
-  startTime: string;
-  endTime?: string;
-  description?: string;
+  name: string;
+  company: string;
+  email: string;
+  phone: string;
+  address: string;
+  createdAt: string;
 }
 
 export interface Job {
   id: string;
   title: string;
-  client: string;
+  client: string; // Keeping for backward compatibility or display name
+  clientId?: string; // Link to Client entity
   description: string;
   status: JobStatus;
   createdAt: string;
@@ -96,17 +100,20 @@ export interface Job {
   priority: "low" | "medium" | "high";
   invoiceNotes?: string;
   assignedTo?: string;
-  clientEmail?: string;
-  secureToken?: string;
   tags?: string[];
   activityLog?: ActivityLogEntry[];
   notes?: JobNote[];
-  timeLogs?: TimeLog[];
-  messages?: JobMessage[];
-  depositPaid?: boolean;
 }
 
-export type PagePermission = "dashboard" | "jobs" | "payroll" | "invoices" | "users" | "files" | "new-request";
+export type PagePermission =
+  | "dashboard"
+  | "jobs"
+  | "payroll"
+  | "invoices"
+  | "users"
+  | "files"
+  | "new-request"
+  | "clients";
 
 export interface AppUser {
   id: string;
@@ -114,6 +121,33 @@ export interface AppUser {
   email: string;
   role: string;
   permissions: PagePermission[];
+}
+
+export interface BusinessSettings {
+  name: string;
+  address: string;
+  email: string;
+  phone: string;
+  logoUrl: string;
+  paymentTerms: string;
+  currency: string;
+  taxRate: number;
+}
+
+export interface Business {
+  id: string;
+  name: string;
+  ownerEmail: string;
+  invitedUsers?: string[];
+  settings: BusinessSettings;
+}
+
+export interface AuthenticatedUser {
+  id: string;
+  name: string;
+  email: string;
+  photoUrl?: string;
+  provider: "google" | "apple";
 }
 
 export interface FileItem {

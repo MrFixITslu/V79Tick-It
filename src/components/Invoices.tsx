@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Job, Employee } from "../types";
+import { Job, Employee, Client, BusinessSettings } from "../types";
 import {
   FileText,
   Search,
@@ -12,17 +12,18 @@ import {
   Eye,
 } from "lucide-react";
 import { JobDetailModal } from "./JobDetailModal";
-import { BusinessSettings } from "./Settings";
 
 export function Invoices({
   jobs,
   setJobs,
   employees,
+  clients,
   settings,
 }: {
   jobs: Job[];
   setJobs: React.Dispatch<React.SetStateAction<Job[]>>;
   employees: Employee[];
+  clients: Client[];
   settings: BusinessSettings;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
@@ -136,7 +137,7 @@ export function Invoices({
                 </td>
                 <td className="px-6 py-4">
                   <span
-                    className={`text-xs font-bold uppercase tracking-widest px-2 py-1 rounded-full ${
+                    className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full ${
                       job.status === "completed"
                         ? "bg-green-100 text-green-700"
                         : job.status === "paid"
@@ -190,6 +191,7 @@ export function Invoices({
         <JobDetailModal
           job={selectedJob}
           employees={employees}
+          clients={clients}
           settings={settings}
           onClose={() => setSelectedJobId(null)}
           onUpdate={(updatedJob) => {

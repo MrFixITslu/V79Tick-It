@@ -1,5 +1,5 @@
 import React from "react";
-import { Job, Employee } from "../types";
+import { Job, Employee, Client } from "../types";
 import { X } from "lucide-react";
 import { JobRequestForm } from "./JobRequestForm";
 
@@ -8,11 +8,13 @@ export function JobModal({
   onClose,
   onSave,
   employees,
+  clients,
 }: {
   isOpen: boolean;
   onClose: () => void;
   onSave: (job: Omit<Job, "id" | "createdAt">) => void;
   employees: Employee[];
+  clients: Client[];
 }) {
   if (!isOpen) return null;
 
@@ -34,6 +36,7 @@ export function JobModal({
         <div className="max-h-[80vh] overflow-y-auto">
           <JobRequestForm 
             employees={employees}
+            clients={clients}
             onSave={(job) => {
               onSave(job);
               onClose();

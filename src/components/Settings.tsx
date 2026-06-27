@@ -11,17 +11,7 @@ import {
   Save,
   Image as ImageIcon,
 } from "lucide-react";
-
-export interface BusinessSettings {
-  name: string;
-  address: string;
-  email: string;
-  phone: string;
-  logoUrl: string;
-  paymentTerms: string;
-  currency: string;
-  taxRate: number;
-}
+import { BusinessSettings } from "../types";
 
 export function Settings({
   settings,
@@ -64,7 +54,7 @@ export function Settings({
                   <ImageIcon className="w-8 h-8 text-slate-300" />
                 )}
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer">
-                  <span className="text-xs text-white font-bold uppercase">Change</span>
+                  <span className="text-[10px] text-white font-bold uppercase">Change</span>
                 </div>
               </div>
               <div className="flex-1">

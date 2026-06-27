@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Job, Employee, JobNote } from "../types";
+import { Job, Employee, JobNote, Client, BusinessSettings } from "../types";
 import {
   X,
   FileText,
@@ -15,105 +15,33 @@ import {
   Printer,
   MessageSquare,
   Send,
-  Timer,
-  Play,
-  Square,
+  Sparkles,
+  FileSpreadsheet,
+  CheckSquare
 } from "lucide-react";
-import { BusinessSettings } from "./Settings";
-import { InvoiceView } from "./InvoiceView";
 
 export function JobDetailModal({
   job,
   employees,
+  clients,
   settings,
   onClose,
   onUpdate,
 }: {
   job: Job;
   employees: Employee[];
+  clients: Client[];
   settings: BusinessSettings;
   onClose: () => void;
   onUpdate: (updatedJob: Job) => void;
 }) {
   const [invoiceNotes, setInvoiceNotes] = useState(job.invoiceNotes || "");
-  const [showInvoicePreview, setShowInvoicePreview] = useState(false);
+  const [showDocPreview, setShowDocPreview] = useState(false);
+  const [docType, setDocType] = useState<"estimate" | "work_order" | "invoice">("invoice");
   const [newNote, setNewNote] = useState("");
-  const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const [activeTimerStart, setActiveTimerStart] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"activity" | "notes" | "chat">("activity");
-  const [messages, setMessages] = useState<any[]>([]);
-  const [newChatMessage, setNewChatMessage] = useState("");
-  const [isSendingMessage, setIsSendingMessage] = useState(false);
-  const chatEndRef = React.useRef<HTMLDivElement>(null);
-
-
-  // For Demo purposes, hardcode current employee
-  const currentEmployeeId = employees[0]?.id || "e1";
-  const currentUser = employees[0]?.name || "Team";
-
-  React.useEffect(() => {
-    const fetchMessages = async () => {
-      try {
-        const res = await fetch(`/api/jobs/${job.id}/messages`);
-        if (res.ok) setMessages(await res.json());
-      } catch (e) {
-        console.error("Fetch messages error:", e);
-      }
-    };
-
-    fetchMessages();
-    const poll = setInterval(fetchMessages, 5000);
-    return () => clearInterval(poll);
-  }, [job.id]);
-
-  React.useEffect(() => {
-    if (activeTab === "chat") {
-      chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, activeTab]);
-
-  const handleSendChatMessage = async () => {
-    if (!newChatMessage.trim() || isSendingMessage) return;
-    setIsSendingMessage(true);
-    try {
-      const res = await fetch(`/api/jobs/${job.id}/messages`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sender: currentUser,
-          content: newChatMessage.trim()
-        })
-      });
-      if (res.ok) {
-        const sent = await res.json();
-        setMessages(prev => [...prev, sent]);
-        setNewChatMessage("");
-      }
-    } catch (e) {
-      console.error("Send message error:", e);
-    } finally {
-      setIsSendingMessage(false);
-    }
-  };
-
-
-  const updateJobInDb = async (updatedJob: Job) => {
-    try {
-      const response = await fetch(`/api/jobs/${job.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatedJob)
-      });
-      if (!response.ok) throw new Error("Failed to update job");
-      onUpdate(updatedJob);
-    } catch (error) {
-      console.error("Error updating job:", error);
-      alert("Failed to save changes. Please try again.");
-    }
-  };
 
   const handleSaveNotes = () => {
-    updateJobInDb({ ...job, invoiceNotes });
+    onUpdate({ ...job, invoiceNotes });
   };
 
   const handleAddNote = () => {
@@ -124,220 +52,87 @@ export function JobDetailModal({
       timestamp: new Date().toISOString(),
       user: "Current User",
     };
-    updateJobInDb({ ...job, notes: [...(job.notes || []), note] });
+    onUpdate({ ...job, notes: [...(job.notes || []), note] });
     setNewNote("");
   };
 
-  const handleToggleTimer = () => {
-    if (!job.depositPaid && !isTimerRunning) {
-      alert("A 30% deposit must be paid before work can start on this job.");
-      return;
-    }
-    if (isTimerRunning) {
-      // Stop timer logic
-      const sessionStart = activeTimerStart || new Date().toISOString();
-      const sessionEnd = new Date().toISOString();
-      const newTimeLog = {
-        id: crypto.randomUUID(),
-        employeeId: currentEmployeeId,
-        startTime: sessionStart,
-        endTime: sessionEnd,
-      };
+  // Find full client details
+  const clientDetails = clients.find(
+    (c) => c.id === job.clientId || c.company.toLowerCase() === job.client.toLowerCase()
+  );
 
-      updateJobInDb({
-        ...job,
-        timeLogs: [...(job.timeLogs || []), newTimeLog],
-      });
-
-      setIsTimerRunning(false);
-      setActiveTimerStart(null);
-    } else {
-      // Start timer logic
-      setIsTimerRunning(true);
-      setActiveTimerStart(new Date().toISOString());
+  const getDocTitle = () => {
+    switch (docType) {
+      case "estimate":
+        return "Estimate & Proposal";
+      case "work_order":
+        return "Work Order";
+      case "invoice":
+        return "Commercial Invoice";
     }
   };
-
-  const [isSendingLink, setIsSendingLink] = useState(false);
-  const [sendResult, setSendResult] = useState<"idle" | "success" | "error">("idle");
-
-  const handleSendLink = async () => {
-    if (!job.clientEmail) {
-      alert("Please add a client email address to send the link.");
-      return;
-    }
-
-    setIsSendingLink(true);
-    setSendResult("idle");
-    try {
-      const response = await fetch(`/api/jobs/${job.id}/send-portal`, {
-        method: "POST"
-      });
-      if (!response.ok) throw new Error("Failed to send");
-      setSendResult("success");
-      setTimeout(() => setSendResult("idle"), 3000);
-    } catch (error) {
-      console.error("Error sending link:", error);
-      setSendResult("error");
-      setTimeout(() => setSendResult("idle"), 3000);
-    } finally {
-      setIsSendingLink(false);
-    }
-  };
-
-  const calculateTotalHours = () => {
-    if (!job.timeLogs || job.timeLogs.length === 0) return 0;
-
-    return job.timeLogs.reduce((total, log) => {
-      if (!log.endTime) return total;
-      const start = new Date(log.startTime).getTime();
-      const end = new Date(log.endTime).getTime();
-      return total + (end - start) / (1000 * 60 * 60); // convert ms to hours
-    }, 0);
-  };
-
-  const formatTime = (hours: number) => {
-    const totalSeconds = Math.floor(hours * 3600);
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    const s = totalSeconds % 60;
-    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
-
-  const totalHours = calculateTotalHours();
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
             <h3 className="text-xl font-bold text-slate-900">{job.title}</h3>
             <span
-              className={`text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-md ${job.priority === "high"
-                ? "bg-red-100 text-red-700"
-                : job.priority === "medium"
-                  ? "bg-yellow-100 text-yellow-700"
-                  : "bg-slate-200 text-slate-700"
-                }`}
+              className={`text-xs font-bold uppercase tracking-wider px-2 py-1 rounded-md ${
+                job.priority === "high"
+                  ? "bg-red-100 text-red-700"
+                  : job.priority === "medium"
+                    ? "bg-yellow-100 text-yellow-700"
+                    : "bg-slate-200 text-slate-700"
+              }`}
             >
               {job.priority}
             </span>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleSendLink}
-              disabled={isSendingLink || !job.clientEmail || sendResult === "success"}
-              className={`text-xs font-bold flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all ${sendResult === "success"
-                ? "bg-emerald-100 text-emerald-700"
-                : sendResult === "error"
-                  ? "bg-red-100 text-red-700"
-                  : job.clientEmail
-                    ? "bg-indigo-100 text-indigo-700 hover:bg-indigo-200"
-                    : "bg-slate-100 text-slate-400 cursor-not-allowed"
-                }`}
-              title={!job.clientEmail ? "Client email required" : "Email client portal link"}
-            >
-              {isSendingLink ? (
-                <span className="animate-spin w-3 h-3 border-2 border-indigo-700/30 border-t-indigo-700 rounded-full" />
-              ) : sendResult === "success" ? (
-                <CheckCircle2 className="w-3.5 h-3.5" />
-              ) : (
-                <Send className="w-3.5 h-3.5" />
-              )}
-              {sendResult === "success" ? "Sent!" : sendResult === "error" ? "Failed" : "Send Portal Link"}
-            </button>
-            <button
-              onClick={onClose}
-              title="Close job details"
-              className="text-slate-400 hover:text-slate-600 p-1.5 rounded-full hover:bg-slate-200 transition-colors ml-2"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-200 transition-colors"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
         <div className="p-6 overflow-y-auto flex-1 space-y-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-2">
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                <User className="w-3 h-3" /> Client Info
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+                <User className="w-3 h-3" /> Client
               </p>
               <p className="font-semibold text-slate-900 truncate">
                 {job.client}
               </p>
-              <input
-                type="email"
-                placeholder="Client Email"
-                value={job.clientEmail || ""}
-                onChange={(e) => updateJobInDb({ ...job, clientEmail: e.target.value })}
-                className="text-xs w-full px-2 py-1 bg-white border border-slate-200 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500/30"
-              />
             </div>
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-2 relative">
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
                 <Clock className="w-3 h-3" /> Status
               </p>
-              <div className="flex items-center justify-between">
-                <p className="font-semibold text-slate-900 capitalize">
-                  {job.status.replace("-", " ")}
-                </p>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">Deposit</span>
-                  <button
-                    onClick={() => updateJobInDb({ ...job, depositPaid: !job.depositPaid })}
-                    title={`Mark deposit as ${job.depositPaid ? 'unpaid' : 'paid'}`}
-                    className={`w-8 h-4 rounded-full transition-colors relative ${job.depositPaid ? 'bg-emerald-500' : 'bg-slate-300'}`}
-                  >
-                    <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${job.depositPaid ? 'left-4.5' : 'left-0.5'}`} />
-                  </button>
-                </div>
-              </div>
+              <p className="font-semibold text-slate-900 capitalize">
+                {job.status.replace("-", " ")}
+              </p>
             </div>
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
               <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
                 <DollarSign className="w-3 h-3" /> Amount
               </p>
               <p className="font-semibold text-slate-900 flex items-center">
-                {job.amount ? job.amount.toLocaleString() : "TBD"}
+                {job.amount ? `${settings.currency === "XCD" ? "EC$" : "$"}${job.amount.toLocaleString()}` : "TBD"}
               </p>
             </div>
-            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 relative group overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 to-purple-50 opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="relative z-10">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                    <Timer className="w-3.5 h-3.5" /> Time Logged
-                  </p>
-                  <button
-                    onClick={handleToggleTimer}
-                    className={`p-1.5 rounded-full flex items-center gap-1 text-xs font-bold uppercase transition-all shadow-sm ${isTimerRunning
-                      ? "bg-red-100 text-red-700 hover:bg-red-200"
-                      : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-                      }`}
-                  >
-                    {isTimerRunning ? (
-                      <>
-                        <Square className="w-3 h-3 fill-current" /> Stop
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-3 h-3 fill-current" /> Start Timer
-                      </>
-                    )}
-                  </button>
-                </div>
-                <div className="flex items-end gap-2">
-                  <p className="text-2xl font-mono font-black text-slate-900 tracking-tight">
-                    {formatTime(totalHours)}
-                  </p>
-                  {isTimerRunning && (
-                    <span className="flex h-2.5 w-2.5 relative mb-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                    </span>
-                  )}
-                </div>
-              </div>
+            <div className="bg-slate-50 p-4 rounded-xl border border-slate-100">
+              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1">
+                <Calendar className="w-3 h-3" /> Due Date
+              </p>
+              <p className="font-semibold text-slate-900">
+                {job.dueDate
+                  ? new Date(job.dueDate).toLocaleDateString()
+                  : "Not set"}
+              </p>
             </div>
           </div>
 
@@ -349,7 +144,7 @@ export function JobDetailModal({
               <select
                 value={job.assignedTo || ""}
                 onChange={(e) =>
-                  updateJobInDb({ ...job, assignedTo: e.target.value })
+                  onUpdate({ ...job, assignedTo: e.target.value })
                 }
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20 bg-white"
               >
@@ -369,7 +164,7 @@ export function JobDetailModal({
                 type="text"
                 value={job.tags?.join(", ") || ""}
                 onChange={(e) =>
-                  updateJobInDb({
+                  onUpdate({
                     ...job,
                     tags: e.target.value.split(",").map((t) => t.trim()),
                   })
@@ -389,195 +184,316 @@ export function JobDetailModal({
             </div>
           </div>
 
-          {/* Tab Selection */}
-          <div className="flex border-b border-slate-100 mb-2">
-            <button
-              onClick={() => setActiveTab("activity")}
-              className={`px-4 py-2 text-sm font-bold flex items-center gap-2 transition-all border-b-2 ${activeTab === "activity" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
-            >
-              <History className="w-4 h-4" /> Activity
-            </button>
-            <button
-              onClick={() => setActiveTab("notes")}
-              className={`px-4 py-2 text-sm font-bold flex items-center gap-2 transition-all border-b-2 ${activeTab === "notes" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
-            >
-              <FileText className="w-4 h-4" /> Notes
-            </button>
-            <button
-              onClick={() => setActiveTab("chat")}
-              className={`px-4 py-2 text-sm font-bold flex items-center gap-2 transition-all border-b-2 ${activeTab === "chat" ? "border-indigo-600 text-indigo-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
-            >
-              <MessageSquare className="w-4 h-4" /> Client Chat
-              {messages.some(m => m.sender === 'Client') && (
-                <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse" />
-              )}
-            </button>
+          {/* Document Generation Options - 100% Automated, non-AI */}
+          <div className="border-t border-slate-100 pt-6">
+            <h4 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+              <FileSpreadsheet className="w-4 h-4 text-indigo-500" />
+              Automated Business Documents
+            </h4>
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
+              <p className="text-xs text-slate-500">
+                Generate secure, professional, compliant documents automatically based on active job status and parameters.
+              </p>
+              
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDocType("estimate");
+                    setShowDocPreview(true);
+                  }}
+                  className="flex flex-col items-center justify-center p-3 bg-white border border-slate-200 rounded-xl hover:border-indigo-500 hover:shadow-sm transition-all"
+                >
+                  <FileText className="w-5 h-5 text-amber-500 mb-1" />
+                  <span className="text-[10px] font-bold text-slate-700 uppercase">Estimate</span>
+                  <span className="text-[8px] text-slate-400 mt-0.5">Prop / Pricing</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDocType("work_order");
+                    setShowDocPreview(true);
+                  }}
+                  className="flex flex-col items-center justify-center p-3 bg-white border border-slate-200 rounded-xl hover:border-indigo-500 hover:shadow-sm transition-all"
+                >
+                  <CheckSquare className="w-5 h-5 text-indigo-500 mb-1" />
+                  <span className="text-[10px] font-bold text-slate-700 uppercase">Work Order</span>
+                  <span className="text-[8px] text-slate-400 mt-0.5">Ops / Assignee</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDocType("invoice");
+                    setShowDocPreview(true);
+                  }}
+                  className="flex flex-col items-center justify-center p-3 bg-white border border-slate-200 rounded-xl hover:border-indigo-500 hover:shadow-sm transition-all"
+                >
+                  <Printer className="w-5 h-5 text-emerald-500 mb-1" />
+                  <span className="text-[10px] font-bold text-slate-700 uppercase">Invoice</span>
+                  <span className="text-[8px] text-slate-400 mt-0.5">Billing / Receipt</span>
+                </button>
+              </div>
+            </div>
           </div>
 
-          {/* Tab Content */}
-          <div className="min-h-[300px] flex flex-col">
-            {activeTab === "activity" && (
-              <div className="space-y-4 py-4">
-                {job.activityLog?.slice().reverse().map((log) => (
-                  <div key={log.id} className="flex gap-3">
-                    <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mt-1.5 shrink-0" />
-                    <div>
-                      <p className="text-sm text-slate-700">{log.action}</p>
-                      <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">
-                        {log.user} • {new Date(log.timestamp).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-                {(!job.activityLog || job.activityLog.length === 0) && (
-                  <p className="text-sm text-slate-400 italic">No activity logged yet.</p>
-                )}
-              </div>
-            )}
-
-            {activeTab === "notes" && (
-              <div className="flex flex-col h-full py-4">
-                <div className="space-y-4 mb-4 flex-1">
-                  {job.notes?.map((note) => (
-                    <div key={note.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                      <p className="text-sm text-slate-700 mb-1">{note.text}</p>
-                      <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">
-                        {note.user} • {new Date(note.timestamp).toLocaleString()}
-                      </p>
-                    </div>
-                  ))}
-                  {(!job.notes || job.notes.length === 0) && (
-                    <p className="text-sm text-slate-400 italic">No notes yet.</p>
-                  )}
+          <div className="border-t border-slate-100 pt-6">
+            <h4 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-indigo-500" /> Job Notes
+            </h4>
+            <div className="space-y-4 mb-4">
+              {job.notes?.map((note) => (
+                <div key={note.id} className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                  <p className="text-sm text-slate-700 mb-1">{note.text}</p>
+                  <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
+                    {note.user} • {new Date(note.timestamp).toLocaleString()}
+                  </p>
                 </div>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={newNote}
-                    onChange={(e) => setNewNote(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleAddNote()}
-                    placeholder="Add a private note..."
-                    className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                  />
-                  <button
-                    onClick={handleAddNote}
-                    className="bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 transition-colors"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            )}
+              ))}
+              {(!job.notes || job.notes.length === 0) && (
+                <p className="text-sm text-slate-400 italic">No notes yet.</p>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newNote}
+                onChange={(e) => setNewNote(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddNote()}
+                placeholder="Add a note..."
+                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              />
+              <button
+                onClick={handleAddNote}
+                className="bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 transition-colors"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
 
-            {activeTab === "chat" && (
-              <div className="flex flex-col h-[350px] py-4">
-                <div className="flex-1 overflow-y-auto space-y-3 mb-4 pr-2">
-                  {messages.length === 0 && (
-                    <div className="text-center py-10 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                      <p className="text-xs text-slate-400 italic">No messages with the client yet.</p>
-                    </div>
-                  )}
-                  {messages.map((m, i) => (
-                    <div key={m.id || i} className={`flex ${m.sender === 'Client' ? 'justify-start' : 'justify-end'}`}>
-                      <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm shadow-sm ${m.sender !== 'Client'
-                        ? 'bg-indigo-600 text-white rounded-tr-none'
-                        : 'bg-slate-100 text-slate-700 border border-slate-200 rounded-tl-none'
-                        }`}>
-                        <div className="flex items-center gap-1.5 mb-1 opacity-60 text-xs font-bold uppercase tracking-wider">
-                          <User className="w-2.5 h-2.5" /> {m.sender}
-                        </div>
-                        <p>{m.content}</p>
-                        <p className={`text-xs mt-1 opacity-60 ${m.sender !== 'Client' ? 'text-right' : 'text-left'}`}>
-                          {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {job.activityLog && job.activityLog.length > 0 && (
+            <div className="border-t border-slate-100 pt-6">
+              <h4 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                <History className="w-4 h-4 text-indigo-500" /> Activity Log
+              </h4>
+              <div className="space-y-4">
+                {job.activityLog
+                  .slice()
+                  .reverse()
+                  .map((log) => (
+                    <div key={log.id} className="flex gap-3">
+                      <div className="w-1.5 h-1.5 rounded-full bg-slate-300 mt-1.5 shrink-0" />
+                      <div>
+                        <p className="text-sm text-slate-700">{log.action}</p>
+                        <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">
+                          {log.user} •{" "}
+                          {new Date(log.timestamp).toLocaleString()}
                         </p>
                       </div>
                     </div>
                   ))}
-                  <div ref={chatEndRef} />
-                </div>
-                <div className="flex gap-2 mt-auto">
-                  <input
-                    type="text"
-                    value={newChatMessage}
-                    onChange={(e) => setNewChatMessage(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && handleSendChatMessage()}
-                    placeholder="Reply to client..."
-                    className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                  />
-                  <button
-                    onClick={handleSendChatMessage}
-                    disabled={!newChatMessage.trim() || isSendingMessage}
-                    className="bg-indigo-600 text-white p-2 rounded-lg hover:bg-indigo-700 disabled:bg-slate-200 transition-colors"
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
-                </div>
               </div>
-            )}
-          </div>
-
+            </div>
+          )}
 
           {job.status === "invoiced" ||
-            job.status === "completed" ||
-            invoiceNotes ? (
-            <div className="border-t border-slate-100 pt-6 space-y-6">
-              <div className="flex items-center justify-between">
-                <h4 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-indigo-500" />
-                  Invoice Configuration
-                </h4>
-                <button
-                  onClick={() => setShowInvoicePreview(true)}
-                  className="text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-lg transition-all flex items-center gap-2 shadow-lg shadow-indigo-100"
-                >
-                  <Printer className="w-3.5 h-3.5" />
-                  Preview & Print Invoice
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                <div className="space-y-3">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                    <Building2 className="w-3 h-3" /> Business Details
-                  </p>
-                  <div className="p-3 bg-white border border-slate-200 rounded-lg">
-                    <p className="text-sm font-bold text-slate-900">{settings.name}</p>
-                    <p className="text-xs text-slate-500">{settings.address}</p>
-                  </div>
-                  <p className="text-xs text-slate-400 italic">Manage these details in the Settings tab.</p>
-                </div>
-                <div className="space-y-3">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
-                    <ImageIcon className="w-3 h-3" /> Invoice Terms
-                  </p>
-                  <div className="p-3 bg-white border border-slate-200 rounded-lg">
-                    <p className="text-xs text-slate-600 line-clamp-3">{settings.paymentTerms}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Invoice Line Items</p>
-                <textarea
-                  value={invoiceNotes}
-                  onChange={(e) => setInvoiceNotes(e.target.value)}
-                  onBlur={handleSaveNotes}
-                  rows={4}
-                  className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors resize-none text-sm text-slate-700"
-                  placeholder="Enter invoice line items (e.g., 1. Web Design - $500)..."
-                />
-              </div>
+          job.status === "completed" ||
+          invoiceNotes ? (
+            <div className="border-t border-slate-100 pt-6 space-y-4">
+              <h4 className="text-sm font-semibold text-slate-900 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-indigo-500" />
+                Line Item Details
+              </h4>
+              <textarea
+                value={invoiceNotes}
+                onChange={(e) => setInvoiceNotes(e.target.value)}
+                onBlur={handleSaveNotes}
+                rows={4}
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-colors resize-none text-sm text-slate-700"
+                placeholder="Enter document line items (e.g., 1. Web Design - $500)..."
+              />
             </div>
           ) : null}
         </div>
       </div>
 
-      {showInvoicePreview && (
-        <InvoiceView
-          job={job}
-          settings={settings}
-          onClose={() => setShowInvoicePreview(false)}
-        />
+      {/* Dynamic Document Preview Screen */}
+      {showDocPreview && (
+        <div className="fixed inset-0 bg-slate-900/90 backdrop-blur-md flex items-center justify-center z-[60] p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-3xl my-8 rounded-none shadow-2xl p-12 relative print:p-0 print:shadow-none print:my-0">
+            <button
+              onClick={() => setShowDocPreview(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 print:hidden"
+            >
+              <X className="w-6 h-6" />
+            </button>
+
+            {/* Document Header */}
+            <div className="flex justify-between items-start mb-12">
+              <div>
+                {settings.logoUrl && (
+                  <img src={settings.logoUrl} alt="Logo" className="h-16 mb-4 object-contain" referrerPolicy="no-referrer" />
+                )}
+                <h2 className="text-2xl font-bold text-slate-900">{settings.name}</h2>
+                <p className="text-sm text-slate-500 max-w-xs">{settings.address}</p>
+                <p className="text-sm text-slate-500">{settings.email} | {settings.phone}</p>
+              </div>
+              <div className="text-right">
+                <h1 className="text-3xl font-light text-slate-400 uppercase tracking-widest mb-4">
+                  {getDocTitle()}
+                </h1>
+                <p className="text-sm font-bold text-slate-900">
+                  REF #: {docType.toUpperCase().slice(0, 3)}-{job.id.slice(0, 8).toUpperCase()}
+                </p>
+                <p className="text-sm text-slate-500">Date: {new Date().toLocaleDateString()}</p>
+                {docType === "estimate" && (
+                  <p className="text-xs text-amber-600 font-bold mt-1">Valid for 30 Days</p>
+                )}
+                {docType === "work_order" && job.dueDate && (
+                  <p className="text-xs text-indigo-600 font-bold mt-1">Target: {new Date(job.dueDate).toLocaleDateString()}</p>
+                )}
+                {docType === "invoice" && job.status === "paid" && (
+                  <div className="inline-block mt-2 px-3 py-1 border-2 border-emerald-500 text-emerald-500 rounded font-bold uppercase text-xs tracking-widest rotate-[-5deg]">
+                    Fully Paid
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Document Addresses */}
+            <div className="grid grid-cols-2 gap-12 mb-12 border-t border-b border-slate-100 py-6">
+              <div>
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">
+                  {docType === "work_order" ? "Client / Location:" : "Bill To / Recipient:"}
+                </h4>
+                <p className="font-bold text-slate-900">{job.client}</p>
+                {clientDetails ? (
+                  <div className="text-sm text-slate-500 space-y-0.5 mt-1">
+                    <p>{clientDetails.name}</p>
+                    <p>{clientDetails.email}</p>
+                    <p>{clientDetails.phone}</p>
+                    <p className="max-w-xs">{clientDetails.address}</p>
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-400 italic">No additional client contact details registered.</p>
+                )}
+              </div>
+
+              <div>
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Scope of Project:</h4>
+                <p className="font-bold text-slate-900">{job.title}</p>
+                <p className="text-sm text-slate-500 mt-1 line-clamp-4">{job.description}</p>
+                {docType === "work_order" && job.assignedTo && (
+                  <div className="mt-3 bg-slate-50 p-2 rounded border border-slate-100 text-xs">
+                    <span className="font-bold text-slate-600">Assigned Operator:</span> {job.assignedTo}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Document Details / Line Items */}
+            {docType !== "work_order" ? (
+              <table className="w-full mb-12">
+                <thead>
+                  <tr className="border-b-2 border-slate-900">
+                    <th className="text-left py-3 text-xs font-bold uppercase tracking-widest">Description / Line Items</th>
+                    <th className="text-right py-3 text-xs font-bold uppercase tracking-widest">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {invoiceNotes.split('\n').filter(line => line.trim()).map((line, i) => (
+                    <tr key={i}>
+                      <td className="py-4 text-sm text-slate-700">{line}</td>
+                      <td className="py-4 text-right text-sm font-medium text-slate-900">
+                        {line.includes('$') ? line.split('$')[1] : line.includes('EC$') ? line.split('EC$')[1] : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                  {!invoiceNotes && (
+                    <tr>
+                      <td className="py-4 text-sm text-slate-700">{job.title} - Full Scope</td>
+                      <td className="py-4 text-right text-sm font-medium text-slate-900">
+                        {settings.currency === "XCD" ? "EC$" : "$"}{job.amount?.toLocaleString() || "0"}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2 border-slate-900">
+                    <td className="py-6 text-right font-bold text-slate-900 uppercase tracking-widest">Total Value</td>
+                    <td className="py-6 text-right text-xl font-bold text-indigo-600">
+                      {settings.currency === "XCD" ? "EC$" : "$"}{job.amount?.toLocaleString() || "0"}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            ) : (
+              // Work Order Operations Checklist
+              <div className="mb-12 space-y-6">
+                <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest border-b border-slate-200 pb-2">
+                  Operations Checklist & Compliance
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="border border-slate-200 p-4 rounded-xl space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase">
+                      <CheckSquare className="w-4 h-4 text-indigo-500" /> Standard Deliverables
+                    </div>
+                    <ul className="text-xs text-slate-500 space-y-2 list-disc pl-4">
+                      <li>Deliver complete project scope according to description.</li>
+                      <li>Check all code, design templates, and marketing parameters.</li>
+                      <li>Internal test and quality review complete.</li>
+                    </ul>
+                  </div>
+                  <div className="border border-slate-200 p-4 rounded-xl space-y-3">
+                    <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase">
+                      <Clock className="w-4 h-4 text-indigo-500" /> Completion Logs
+                    </div>
+                    <p className="text-xs text-slate-500">
+                      Assigned employee must log active labor hours under payroll sheet. Review is required by management before invoice submission.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-8 grid grid-cols-2 gap-12 text-center text-xs">
+                  <div>
+                    <div className="border-b border-slate-300 h-8" />
+                    <p className="mt-2 text-slate-400 font-bold uppercase">Customer Acceptance Signature</p>
+                  </div>
+                  <div>
+                    <div className="border-b border-slate-300 h-8" />
+                    <p className="mt-2 text-slate-400 font-bold uppercase">Operator Signature</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Document Footer */}
+            <div className="border-t border-slate-100 pt-8">
+              <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Terms & Compliances:</h4>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                {docType === "estimate" 
+                  ? "This estimate is based on the current scope description and holds no binding contract until acceptance."
+                  : docType === "work_order"
+                  ? "All operational tasks must be handled in compliance with local workspace laws."
+                  : settings.paymentTerms}
+                <br />
+                Thank you for your ongoing partnership!
+              </p>
+            </div>
+
+            <div className="mt-12 flex justify-center print:hidden">
+              <button
+                onClick={() => window.print()}
+                className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-800 transition-all shadow-xl"
+              >
+                <Printer className="w-5 h-5" />
+                Print Document
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
