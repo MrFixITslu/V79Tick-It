@@ -36,7 +36,7 @@ export function Sidebar({
           </div>
           <div>
             <span className="text-sm font-bold text-slate-200 block truncate max-w-[140px]">{businessName}</span>
-            <span className="text-[10px] text-slate-400 font-medium tracking-widest uppercase">Tick-It Admin</span>
+            <span className="text-[10px] text-slate-400 font-medium tracking-widest uppercase">V79 TIQUET Admin</span>
           </div>
         </div>
       </div>

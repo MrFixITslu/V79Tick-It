@@ -1,9 +1,6 @@
 import React from "react";
 import { Job, COLUMNS } from "../types";
 import {
-  PieChart,
-  Pie,
-  Cell,
   BarChart,
   Bar,
   XAxis,
@@ -11,9 +8,9 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from "recharts";
-import { Briefcase, CheckCircle2, Clock, AlertCircle, History } from "lucide-react";
+import { Briefcase, CheckCircle2, Clock, AlertCircle, History, PieChart as PieIcon } from "lucide-react";
+import { D3PieChartWidget } from "./D3PieChartWidget";
 
 export function Dashboard({ jobs }: { jobs: Job[] }) {
   const statusData = [
@@ -71,28 +68,16 @@ export function Dashboard({ jobs }: { jobs: Job[] }) {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-          <h3 className="text-lg font-bold text-slate-900 mb-6">Jobs by Status</h3>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={statusData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {statusData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <PieIcon className="w-5 h-5 text-indigo-500" />
+              Stage Distribution (D3 Interactive)
+            </h3>
+            <p className="text-slate-400 text-xs mt-1">Hover slices to inspect active stage telemetry.</p>
+          </div>
+          <div className="mt-4 flex-1 flex flex-col justify-center">
+            <D3PieChartWidget jobs={jobs} />
           </div>
         </div>
 

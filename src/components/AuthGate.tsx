@@ -44,11 +44,10 @@ export function AuthGate({
   const getDemoBusinesses = (ownerEmail: string): Business[] => {
     // Check if businesses exist in localStorage
     const stored = localStorage.getItem("tickit_registered_businesses");
+    let parsed: Business[] = [];
     if (stored) {
       try {
-        const parsed = JSON.parse(stored) as Business[];
-        // Filter those owned or pre-seeded
-        return parsed;
+        parsed = JSON.parse(stored) as Business[];
       } catch (e) {
         // Fallback
       }
@@ -57,12 +56,12 @@ export function AuthGate({
     const defaultList: Business[] = [
       {
         id: "biz_tickit",
-        name: "Tick-It Enterprise",
+        name: "V79 TIQUET Enterprise",
         ownerEmail: "system",
         settings: {
-          name: "Tick-It Enterprise",
+          name: "V79 TIQUET Enterprise",
           address: "123 Creative Plaza, Design District, NY 10001",
-          email: "billing@tick-it.com",
+          email: "billing@v79-tiquet.com",
           phone: "+1 (555) 000-1234",
           logoUrl: "https://picsum.photos/200/100?random=1",
           paymentTerms: "Please make payment within 30 days of receiving this invoice.",
@@ -86,6 +85,26 @@ export function AuthGate({
         }
       }
     ];
+
+    if (parsed && parsed.length > 0) {
+      // Migrate "Tick-It Enterprise" to "V79 TIQUET Enterprise" if present in stored
+      const migrated = parsed.map(biz => {
+        if (biz.id === "biz_tickit" && (biz.name === "Tick-It Enterprise" || biz.settings.name === "Tick-It Enterprise")) {
+          return {
+            ...biz,
+            name: "V79 TIQUET Enterprise",
+            settings: {
+              ...biz.settings,
+              name: "V79 TIQUET Enterprise",
+              email: "billing@v79-tiquet.com"
+            }
+          };
+        }
+        return biz;
+      });
+      localStorage.setItem("tickit_registered_businesses", JSON.stringify(migrated));
+      return migrated;
+    }
 
     localStorage.setItem("tickit_registered_businesses", JSON.stringify(defaultList));
     return defaultList;
@@ -140,7 +159,7 @@ export function AuthGate({
           <div className="w-12 h-12 bg-indigo-600 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-indigo-900/40">
             <Briefcase className="w-6 h-6 text-white" />
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-white font-sans">Tick-It Admin</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-white font-sans">V79 TIQUET Manager</h1>
           <p className="text-xs font-bold text-slate-500 uppercase tracking-widest flex items-center justify-center gap-1.5">
             <Shield className="w-3.5 h-3.5 text-indigo-500" />
             100% Multi-Tenant Isolation Gate
@@ -232,7 +251,7 @@ export function AuthGate({
         {authStep === "business_select" && tempUser && (
           <div className="space-y-6">
             <div className="space-y-2">
-              <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest">Logged in as {tempUser.email}</p>
+              <p className="text-xs font-bold text-indigo-400 uppercase tracking-widest font-mono">Logged in as {tempUser.email}</p>
               <h2 className="text-lg font-bold text-white">Select Your Business Division</h2>
               <p className="text-xs text-slate-500 leading-relaxed">
                 To guarantee zero overlap of critical customer information, payroll data, and operations, select or register your distinct workspace.
@@ -240,25 +259,36 @@ export function AuthGate({
             </div>
 
             <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
-              {businesses.map((biz) => (
-                <button
-                  type="button"
-                  key={biz.id}
-                  onClick={() => handleSelectBusiness(biz)}
-                  className="w-full flex items-center justify-between p-4 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 rounded-2xl text-left transition-all group active:scale-[0.99] cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 bg-slate-850 text-slate-300 rounded-lg flex items-center justify-center border border-slate-750 group-hover:bg-indigo-950 group-hover:text-indigo-400 transition-colors">
-                      <Building2 className="w-4 h-4" />
+              {(() => {
+                const filtered = businesses.filter((biz) => biz.ownerEmail === tempUser.email);
+                if (filtered.length === 0) {
+                  return (
+                    <div className="text-center py-6 px-4 border border-dashed border-slate-850 rounded-2xl bg-slate-900/30">
+                      <p className="text-xs font-bold text-slate-400">No registered divisions found</p>
+                      <p className="text-[10px] text-slate-500 mt-1">Please register a new division below to get started.</p>
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-white">{biz.name}</p>
-                      <p className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">ID: {biz.id}</p>
+                  );
+                }
+                return filtered.map((biz) => (
+                  <button
+                    type="button"
+                    key={biz.id}
+                    onClick={() => handleSelectBusiness(biz)}
+                    className="w-full flex items-center justify-between p-4 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-slate-700 rounded-2xl text-left transition-all group active:scale-[0.99] cursor-pointer"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 bg-slate-850 text-slate-300 rounded-lg flex items-center justify-center border border-slate-750 group-hover:bg-indigo-950 group-hover:text-indigo-400 transition-colors">
+                        <Building2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-white">{biz.name}</p>
+                        <p className="text-[10px] text-slate-500 uppercase tracking-widest font-mono">ID: {biz.id}</p>
+                      </div>
                     </div>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-indigo-400 transition-transform group-hover:translate-x-1" />
-                </button>
-              ))}
+                    <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-indigo-400 transition-transform group-hover:translate-x-1" />
+                  </button>
+                ));
+              })()}
             </div>
 
             <div className="pt-2">

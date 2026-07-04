@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Search, Bell, Shield, LogOut, CheckSquare, RefreshCw } from "lucide-react";
+import { Search, Bell, Shield, LogOut, CheckSquare, RefreshCw, Zap, ChevronDown, UserPlus, Clock, X } from "lucide-react";
 import { JobBoard } from "./components/JobBoard";
 import { Sidebar } from "./components/Sidebar";
 import { JobRequestForm } from "./components/JobRequestForm";
@@ -239,10 +239,27 @@ export default function App() {
 
   const [activeBusiness, setActiveBusiness] = useState<Business | null>(() => {
     const saved = localStorage.getItem("tickit_active_business");
-    return saved ? JSON.parse(saved) : null;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as Business;
+        if (parsed.id === "biz_tickit" && (parsed.name === "Tick-It Enterprise" || parsed.settings.name === "Tick-It Enterprise")) {
+          parsed.name = "V79 TIQUET Enterprise";
+          parsed.settings.name = "V79 TIQUET Enterprise";
+          parsed.settings.email = "billing@v79-tiquet.com";
+          localStorage.setItem("tickit_active_business", JSON.stringify(parsed));
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return null;
   });
 
   const [activeTab, setActiveTab] = useState("dashboard");
+
+  // Quick Action menu states
+  const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
+  const [isNewClientModalOpen, setIsNewClientModalOpen] = useState(false);
+  const [isLogTimeModalOpen, setIsLogTimeModalOpen] = useState(false);
 
   // Partitioned state variables loaded based on activeBusiness.id
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -315,7 +332,13 @@ export default function App() {
     const storedSettings = localStorage.getItem(`tickit_${bizId}_settings`);
     if (storedSettings) {
       try {
-        setSettings(JSON.parse(storedSettings));
+        const parsedSettings = JSON.parse(storedSettings) as BusinessSettings;
+        if (bizId === "biz_tickit" && parsedSettings.name === "Tick-It Enterprise") {
+          parsedSettings.name = "V79 TIQUET Enterprise";
+          parsedSettings.email = "billing@v79-tiquet.com";
+          localStorage.setItem(`tickit_${bizId}_settings`, JSON.stringify(parsedSettings));
+        }
+        setSettings(parsedSettings);
       } catch (e) {}
     } else {
       localStorage.setItem(`tickit_${bizId}_settings`, JSON.stringify(activeBusiness.settings));
@@ -436,9 +459,52 @@ export default function App() {
 
           <div className="flex items-center gap-4">
             {/* Status indicator to reinforce absolute isolation and security */}
-            <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-bold uppercase tracking-wider bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
+            <div className="hidden sm:flex items-center gap-1.5 text-xs text-emerald-600 font-bold uppercase tracking-wider bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               Isolated Space
+            </div>
+
+            {/* Quick Actions Dropdown */}
+            <div className="relative">
+              <button
+                id="btn-quick-actions"
+                onClick={() => setIsQuickActionsOpen(!isQuickActionsOpen)}
+                className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md active:scale-[0.98] cursor-pointer"
+              >
+                <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300 animate-pulse" />
+                <span>Quick Actions</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isQuickActionsOpen ? "rotate-180" : ""}`} />
+              </button>
+
+              {isQuickActionsOpen && (
+                <div className="absolute right-0 mt-2 w-52 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 py-1.5 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="px-4 py-1.5 border-b border-slate-100">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Workspace Shortcuts</p>
+                  </div>
+                  
+                  <button
+                    onClick={() => {
+                      setIsNewClientModalOpen(true);
+                      setIsQuickActionsOpen(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 text-left text-xs font-bold text-slate-700 transition-colors cursor-pointer"
+                  >
+                    <UserPlus className="w-4 h-4 text-indigo-500" />
+                    New Client
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsLogTimeModalOpen(true);
+                      setIsQuickActionsOpen(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 text-left text-xs font-bold text-slate-700 transition-colors cursor-pointer"
+                  >
+                    <Clock className="w-4 h-4 text-emerald-500" />
+                    Log Time / Time Card
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-3 border-l border-slate-200 pl-4">
@@ -534,6 +600,244 @@ export default function App() {
           )}
         </div>
       </main>
+
+      {/* New Client Quick Action Modal */}
+      {isNewClientModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden relative animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Add New Client</h3>
+              <button
+                onClick={() => setIsNewClientModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-full hover:bg-slate-50 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const target = e.currentTarget;
+              const name = (target.elements.namedItem("clientName") as HTMLInputElement).value;
+              const company = (target.elements.namedItem("clientCompany") as HTMLInputElement).value;
+              const email = (target.elements.namedItem("clientEmail") as HTMLInputElement).value;
+              const phone = (target.elements.namedItem("clientPhone") as HTMLInputElement).value;
+              const address = (target.elements.namedItem("clientAddress") as HTMLInputElement).value;
+              
+              const newClient = {
+                id: `c_${crypto.randomUUID().slice(0, 8)}`,
+                name,
+                company: company || "Individual",
+                email,
+                phone,
+                address,
+                createdAt: new Date().toISOString()
+              };
+              
+              setClients([newClient, ...clients]);
+              setIsNewClientModalOpen(false);
+              alert(`Successfully added new client: ${name} (${company || "Individual"})`);
+            }} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Contact Name *</label>
+                <input
+                  name="clientName"
+                  type="text"
+                  required
+                  placeholder="John Smith"
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm text-slate-800"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Company / Organization</label>
+                <input
+                  name="clientCompany"
+                  type="text"
+                  placeholder="e.g. Acme Corp"
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm text-slate-800"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Email *</label>
+                  <input
+                    name="clientEmail"
+                    type="email"
+                    required
+                    placeholder="john@example.com"
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Phone</label>
+                  <input
+                    name="clientPhone"
+                    type="text"
+                    placeholder="+1 (555) 000-0000"
+                    className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm text-slate-800"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Billing Address</label>
+                <textarea
+                  name="clientAddress"
+                  placeholder="123 Corporate Way, City, ST"
+                  rows={2}
+                  className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm text-slate-800 resize-none"
+                />
+              </div>
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsNewClientModalOpen(false)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-sm transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-colors shadow-md cursor-pointer"
+                >
+                  Add Client
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Log Time / Time Card Quick Action Modal */}
+      {isLogTimeModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden relative animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">Log Hours / Time Card</h3>
+              <button
+                onClick={() => setIsLogTimeModalOpen(false)}
+                className="text-slate-400 hover:text-slate-600 transition-colors p-1 rounded-full hover:bg-slate-50 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            {employees.length === 0 ? (
+              <div className="p-8 text-center text-slate-500">
+                <p className="text-sm">No employees configured for this tenant partition.</p>
+                <p className="text-xs text-slate-400 mt-2">Please register an employee in the Payroll panel first.</p>
+              </div>
+            ) : (
+              <form onSubmit={(e) => {
+                e.preventDefault();
+                const target = e.currentTarget;
+                const employeeId = (target.elements.namedItem("employeeId") as HTMLSelectElement).value;
+                const date = (target.elements.namedItem("logDate") as HTMLInputElement).value;
+                const hours = parseFloat((target.elements.namedItem("logHours") as HTMLInputElement).value);
+                const clockIn = (target.elements.namedItem("clockIn") as HTMLInputElement).value || "09:00";
+                const clockOut = (target.elements.namedItem("clockOut") as HTMLInputElement).value || "17:00";
+
+                const matchedEmployee = employees.find(emp => emp.id === employeeId);
+                if (!matchedEmployee) return;
+
+                const newTimeCard = {
+                  id: `tc_${crypto.randomUUID().slice(0, 8)}`,
+                  date,
+                  clockIn,
+                  clockOut,
+                  hoursWorked: hours
+                };
+
+                const updatedEmployees = employees.map(emp => {
+                  if (emp.id === employeeId) {
+                    const currentCards = emp.timeCards || [];
+                    return {
+                      ...emp,
+                      hoursWorked: (emp.hoursWorked || 0) + hours,
+                      timeCards: [newTimeCard, ...currentCards]
+                    };
+                  }
+                  return emp;
+                });
+
+                setEmployees(updatedEmployees);
+                setIsLogTimeModalOpen(false);
+                alert(`Successfully logged ${hours} hours for ${matchedEmployee.name} on ${date}.`);
+              }} className="p-6 space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Select Employee *</label>
+                  <select
+                    name="employeeId"
+                    required
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm text-slate-800"
+                  >
+                    {employees.map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.name} ({emp.role} - {emp.workerType})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Date *</label>
+                    <input
+                      name="logDate"
+                      type="date"
+                      required
+                      defaultValue={new Date().toISOString().split("T")[0]}
+                      className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Hours Worked *</label>
+                    <input
+                      name="logHours"
+                      type="number"
+                      required
+                      min="0.1"
+                      max="24"
+                      step="0.1"
+                      defaultValue="8"
+                      className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm text-slate-800"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Clock In (Optional)</label>
+                    <input
+                      name="clockIn"
+                      type="time"
+                      defaultValue="09:00"
+                      className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm text-slate-800"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Clock Out (Optional)</label>
+                    <input
+                      name="clockOut"
+                      type="time"
+                      defaultValue="17:00"
+                      className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm text-slate-800"
+                    />
+                  </div>
+                </div>
+                <div className="pt-2 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsLogTimeModalOpen(false)}
+                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-sm transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-colors shadow-md cursor-pointer"
+                  >
+                    Save Time Card
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
