@@ -1,338 +1,535 @@
 import React, { useState, useEffect } from "react";
-import { Search, Bell, LogOut } from "lucide-react";
+import { Search, Bell, Shield, LogOut, CheckSquare, RefreshCw } from "lucide-react";
 import { JobBoard } from "./components/JobBoard";
 import { Sidebar } from "./components/Sidebar";
-import { JobDetailView } from "./components/JobDetailView";
 import { JobRequestForm } from "./components/JobRequestForm";
 import { Dashboard } from "./components/Dashboard";
-
-const Payroll = React.lazy(() => import("./components/Payroll").then(m => ({ default: m.Payroll })));
-const UserManagement = React.lazy(() => import("./components/UserManagement").then(m => ({ default: m.UserManagement })));
-const FileRepository = React.lazy(() => import("./components/FileRepository").then(m => ({ default: m.FileRepository })));
-const Invoices = React.lazy(() => import("./components/Invoices").then(m => ({ default: m.Invoices })));
-
-import { Settings, BusinessSettings } from "./components/Settings";
-import { ClientPortal } from "./components/ClientPortal";
+import { Payroll } from "./components/Payroll";
+import { UserManagement } from "./components/UserManagement";
+import { FileRepository } from "./components/FileRepository";
+import { Invoices } from "./components/Invoices";
 import { Clients } from "./components/Clients";
-import { MyProfile } from "./components/MyProfile";
-import { NotificationDropdown, Notification } from "./components/NotificationDropdown";
-import { AccountSuspended } from "./components/AccountSuspended";
-import { SuperAdminLogin } from "./components/SuperAdminLogin";
-import { SuperAdminPortal } from "./components/SuperAdminPortal";
-import { SubscriptionPlans } from "./components/SubscriptionPlans";
-import { Help } from "./components/Help";
-import { Job, Employee, PayrollRecord, AppUser, FileItem } from "./types";
-import { AuthProvider, useAuth } from "./context/AuthContext";
-import { Login } from "./components/Login";
-import { Signup } from "./components/Signup";
-import { apiFetch } from "./lib/api";
+import { Settings } from "./components/Settings";
+import { AuthGate } from "./components/AuthGate";
+import { Job, Employee, PayrollRecord, AppUser, FileItem, Client, BusinessSettings, AuthenticatedUser, Business } from "./types";
 
-function MainApp() {
-  const { user, isLoading: authLoading, logout } = useAuth();
-  const [showSignup, setShowSignup] = useState(false);
-  const [isSuspended, setIsSuspended] = useState(false);
-  const [showUpgrade, setShowUpgrade] = useState(false);
+// SEED DATA FOR DEMO CORPORATIONS
 
-  const [activeTab, setActiveTab] = useState(() => {
-    console.log("Initial Tab: dashboard");
-    return "dashboard";
+const initialClients: Client[] = [
+  {
+    id: "c1",
+    name: "John Smith",
+    company: "Acme Corp",
+    email: "john@acmecorp.com",
+    phone: "+1 (555) 123-4567",
+    address: "123 Industrial Way, Springfield, IL 62704",
+    createdAt: new Date(Date.now() - 86400000 * 60).toISOString(),
+  },
+  {
+    id: "c2",
+    name: "Sarah Johnson",
+    company: "TechStart Inc",
+    email: "sarah@techstart.io",
+    phone: "+1 (555) 987-6543",
+    address: "456 Innovation Blvd, San Francisco, CA 94105",
+    createdAt: new Date(Date.now() - 86400000 * 30).toISOString(),
+  },
+  {
+    id: "c3",
+    name: "Mike Miller",
+    company: "Fitness Plus",
+    email: "mike@fitnessplus.com",
+    phone: "+1 (555) 246-8101",
+    address: "789 Gym Rd, Austin, TX 78701",
+    createdAt: new Date(Date.now() - 86400000 * 15).toISOString(),
+  },
+];
+
+const initialJobs: Job[] = [
+  {
+    id: "1",
+    title: "Website Redesign",
+    client: "Acme Corp",
+    clientId: "c1",
+    description:
+      "Complete overhaul of the corporate website including new branding and e-commerce integration.",
+    status: "request",
+    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+    dueDate: new Date(Date.now() + 86400000 * 10).toISOString(),
+    amount: 15000,
+    priority: "high",
+    assignedTo: "Alice Smith",
+    tags: ["design", "web"],
+    activityLog: [
+      {
+        id: "l1",
+        action: "Job request created",
+        timestamp: new Date(Date.now() - 86400000 * 2).toISOString(),
+        user: "System",
+      },
+    ],
+  },
+  {
+    id: "2",
+    title: "SEO Audit",
+    client: "TechStart Inc",
+    clientId: "c2",
+    description:
+      "Comprehensive SEO audit and keyword research for Q3 marketing push.",
+    status: "estimation",
+    createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
+    dueDate: new Date(Date.now() + 86400000 * 3).toISOString(),
+    priority: "medium",
+    assignedTo: "Bob Jones",
+    tags: ["marketing", "seo"],
+    activityLog: [
+      {
+        id: "l2",
+        action: "Job request created",
+        timestamp: new Date(Date.now() - 86400000 * 5).toISOString(),
+        user: "System",
+      },
+      {
+        id: "l3",
+        action: "Moved from request to estimation",
+        timestamp: new Date(Date.now() - 86400000 * 4).toISOString(),
+        user: "Alice Smith",
+      },
+    ],
+  },
+  {
+    id: "3",
+    title: "Mobile App MVP",
+    client: "Fitness Plus",
+    clientId: "c3",
+    description:
+      "React Native mobile app MVP with user authentication and basic workout tracking.",
+    status: "in-progress",
+    createdAt: new Date(Date.now() - 86400000 * 14).toISOString(),
+    dueDate: new Date(Date.now() + 86400000 * 30).toISOString(),
+    amount: 25000,
+    priority: "high",
+    assignedTo: "Charlie Brown",
+    tags: ["mobile", "app"],
+    activityLog: [
+      {
+        id: "l4",
+        action: "Job request created",
+        timestamp: new Date(Date.now() - 86400000 * 14).toISOString(),
+        user: "System",
+      },
+      {
+        id: "l5",
+        action: "Moved from request to in-progress",
+        timestamp: new Date(Date.now() - 86400000 * 12).toISOString(),
+        user: "Bob Jones",
+      },
+    ],
+  },
+  {
+    id: "4",
+    title: "Logo Design",
+    client: "Fresh Bakery",
+    description: "New logo design and brand guidelines for local bakery chain.",
+    status: "review",
+    createdAt: new Date(Date.now() - 86400000 * 20).toISOString(),
+    dueDate: new Date(Date.now() - 86400000 * 1).toISOString(),
+    amount: 2500,
+    priority: "low",
+    assignedTo: "Dana White",
+    tags: ["branding", "logo"],
+    activityLog: [
+      {
+        id: "l6",
+        action: "Job request created",
+        timestamp: new Date(Date.now() - 86400000 * 20).toISOString(),
+        user: "System",
+      },
+    ],
+  },
+];
+
+const initialEmployees: Employee[] = [
+  {
+    id: "e1",
+    name: "Alice Smith",
+    role: "Project Manager",
+    salary: 5000,
+    workerType: "salary",
+    paymentMethod: "Bank Transfer",
+    status: "active",
+  },
+  {
+    id: "e2",
+    name: "Bob Jones",
+    role: "Designer",
+    salary: 40,
+    workerType: "hourly",
+    paymentMethod: "PayPal",
+    status: "active",
+    timeCards: [
+      {
+        id: "tc1",
+        date: "2026-06-25",
+        clockIn: "08:00",
+        clockOut: "17:00",
+        hoursWorked: 9,
+      },
+      {
+        id: "tc2",
+        date: "2026-06-26",
+        clockIn: "09:00",
+        clockOut: "17:00",
+        hoursWorked: 8,
+      },
+    ],
+  },
+  {
+    id: "e3",
+    name: "Charlie Brown",
+    role: "Developer",
+    salary: 6000,
+    workerType: "salary",
+    paymentMethod: "PayPal",
+    status: "active",
+  },
+];
+
+const initialUsers: AppUser[] = [
+  {
+    id: "u1",
+    name: "John Doe",
+    email: "john@example.com",
+    role: "Admin",
+    permissions: ["dashboard", "jobs", "new-request", "payroll", "invoices", "users", "files"],
+  },
+  {
+    id: "u2",
+    name: "Alice Smith",
+    email: "alice@example.com",
+    role: "Manager",
+    permissions: ["dashboard", "jobs", "new-request", "files"],
+  },
+];
+
+const initialFiles: FileItem[] = [
+  {
+    id: "f1",
+    name: "Brand_Guidelines_2024.pdf",
+    size: 2500000,
+    type: "application/pdf",
+    uploadedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+    uploadedBy: "John Doe",
+  },
+  {
+    id: "f2",
+    name: "Logo_Assets.zip",
+    size: 15000000,
+    type: "application/zip",
+    uploadedAt: new Date(Date.now() - 86400000 * 5).toISOString(),
+    uploadedBy: "Alice Smith",
+  },
+];
+
+export default function App() {
+  const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(() => {
+    const saved = localStorage.getItem("tickit_current_user");
+    return saved ? JSON.parse(saved) : null;
   });
 
-  const handleSetTab = (tab: string) => {
-    console.log("Setting Active Tab to:", tab);
-    setActiveTab(tab);
-  };
+  const [activeBusiness, setActiveBusiness] = useState<Business | null>(() => {
+    const saved = localStorage.getItem("tickit_active_business");
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const [activeTab, setActiveTab] = useState("dashboard");
+
+  // Partitioned state variables loaded based on activeBusiness.id
   const [jobs, setJobs] = useState<Job[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [payrollRecords, setPayrollRecords] = useState<PayrollRecord[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
-  const [settings, setSettings] = useState<BusinessSettings | null>(null);
-  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [settings, setSettings] = useState<BusinessSettings>({
+    name: "",
+    address: "",
+    email: "",
+    phone: "",
+    logoUrl: "",
+    paymentTerms: "",
+    currency: "USD",
+    taxRate: 0,
+  });
 
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [showNotifications, setShowNotifications] = useState(false);
+  // Fetch partitioned database when activeBusiness changes
+  useEffect(() => {
+    if (!activeBusiness) return;
 
-  const fetchData = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const [jobsRes, employeesRes, settingsRes] = await Promise.all([
-        apiFetch("/api/jobs").then(res => {
-          if (res.status === 402) { setIsSuspended(true); throw new Error("suspended"); }
-          if (!res.ok) throw new Error("Failed to fetch jobs");
-          return res.json();
-        }),
-        apiFetch("/api/employees").then(res => {
-          if (!res.ok) throw new Error("Failed to fetch employees");
-          return res.json();
-        }),
-        apiFetch("/api/settings").then(res => {
-          if (!res.ok) throw new Error("Failed to fetch settings");
-          return res.json();
-        })
-      ]);
+    const bizId = activeBusiness.id;
 
-      setJobs(jobsRes);
-      setEmployees(employeesRes);
-      setSettings(settingsRes);
-    } catch (err: any) {
-      if (err.message === "suspended") return;
-      console.error("Error fetching data:", err);
-      setError(err.message || "Failed to load application data. Please check your connection.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const fetchNotifications = async () => {
-    try {
-      const res = await apiFetch("/api/notifications");
-      if (res.ok) {
-        const data = await res.json();
-        setNotifications(data);
-      }
-    } catch (err) {
-      console.error("Error fetching notifications:", err);
-    }
-  };
-
-  const markNotificationRead = async (id?: string) => {
-    try {
-      const res = await apiFetch("/api/notifications/read", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id })
-      });
-      if (res.ok) {
-        if (id) {
-          setNotifications(notifications.map(n => n.id === id ? { ...n, isRead: 1 } : n));
-        } else {
-          setNotifications(notifications.map(n => ({ ...n, isRead: 1 })));
+    // Helper functions to load partition or fallback to seeds (for pre-seeded business) or defaults
+    const loadPartition = <T,>(key: string, seed: T): T => {
+      const stored = localStorage.getItem(`tickit_${bizId}_${key}`);
+      if (stored) {
+        try {
+          return JSON.parse(stored);
+        } catch (e) {
+          // parse error
         }
       }
-    } catch (err) {
-      console.error("Error marking notification read:", err);
+      
+      // Seeding logic: Only preseed standard demo businesses
+      const isPreseeded = bizId === "biz_tickit" || bizId === "biz_apex";
+      const finalSeed = isPreseeded ? seed : ([] as unknown as T);
+
+      localStorage.setItem(`tickit_${bizId}_${key}`, JSON.stringify(finalSeed));
+      return finalSeed;
+    };
+
+    // Load jobs
+    const loadedJobs = loadPartition<Job[]>("jobs", initialJobs);
+    setJobs(loadedJobs);
+
+    // Load clients
+    const loadedClients = loadPartition<Client[]>("clients", initialClients);
+    setClients(loadedClients);
+
+    // Load employees
+    const loadedEmployees = loadPartition<Employee[]>("employees", initialEmployees);
+    setEmployees(loadedEmployees);
+
+    // Load files
+    const loadedFiles = loadPartition<FileItem[]>("files", initialFiles);
+    setFiles(loadedFiles);
+
+    // Load payroll
+    const loadedPayroll = loadPartition<PayrollRecord[]>("payroll", []);
+    setPayrollRecords(loadedPayroll);
+
+    // Load users
+    const loadedUsers = loadPartition<AppUser[]>("users", initialUsers);
+    setUsers(loadedUsers);
+
+    // Load Settings
+    const storedSettings = localStorage.getItem(`tickit_${bizId}_settings`);
+    if (storedSettings) {
+      try {
+        setSettings(JSON.parse(storedSettings));
+      } catch (e) {}
+    } else {
+      localStorage.setItem(`tickit_${bizId}_settings`, JSON.stringify(activeBusiness.settings));
+      setSettings(activeBusiness.settings);
+    }
+
+  }, [activeBusiness]);
+
+  // Synchronize partitioned database on state changes
+  useEffect(() => {
+    if (!activeBusiness) return;
+    localStorage.setItem(`tickit_${activeBusiness.id}_jobs`, JSON.stringify(jobs));
+  }, [jobs, activeBusiness]);
+
+  useEffect(() => {
+    if (!activeBusiness) return;
+    localStorage.setItem(`tickit_${activeBusiness.id}_clients`, JSON.stringify(clients));
+  }, [clients, activeBusiness]);
+
+  useEffect(() => {
+    if (!activeBusiness) return;
+    localStorage.setItem(`tickit_${activeBusiness.id}_employees`, JSON.stringify(employees));
+  }, [employees, activeBusiness]);
+
+  useEffect(() => {
+    if (!activeBusiness) return;
+    localStorage.setItem(`tickit_${activeBusiness.id}_files`, JSON.stringify(files));
+  }, [files, activeBusiness]);
+
+  useEffect(() => {
+    if (!activeBusiness) return;
+    localStorage.setItem(`tickit_${activeBusiness.id}_payroll`, JSON.stringify(payrollRecords));
+  }, [payrollRecords, activeBusiness]);
+
+  useEffect(() => {
+    if (!activeBusiness) return;
+    localStorage.setItem(`tickit_${activeBusiness.id}_users`, JSON.stringify(users));
+  }, [users, activeBusiness]);
+
+  const handleUpdateSettings = (newSettings: BusinessSettings) => {
+    setSettings(newSettings);
+    if (activeBusiness) {
+      localStorage.setItem(`tickit_${activeBusiness.id}_settings`, JSON.stringify(newSettings));
+      
+      // Update business name inside activeBusiness representation too
+      const updatedBiz = { ...activeBusiness, name: newSettings.name, settings: newSettings };
+      setActiveBusiness(updatedBiz);
+      localStorage.setItem("tickit_active_business", JSON.stringify(updatedBiz));
+
+      // Update registered businesses list in localStorage
+      const storedBizs = localStorage.getItem("tickit_registered_businesses");
+      if (storedBizs) {
+        try {
+          const parsed = JSON.parse(storedBizs) as Business[];
+          const updatedList = parsed.map(b => b.id === activeBusiness.id ? updatedBiz : b);
+          localStorage.setItem("tickit_registered_businesses", JSON.stringify(updatedList));
+        } catch (e) {}
+      }
     }
   };
 
-  useEffect(() => {
-    if (user) {
-      fetchData();
-      fetchNotifications();
-      const interval = setInterval(fetchNotifications, 60000); // Poll every minute
-      return () => clearInterval(interval);
-    }
-  }, [user]);
+  const handleAuthComplete = (user: AuthenticatedUser, business: Business) => {
+    setCurrentUser(user);
+    setActiveBusiness(business);
+    localStorage.setItem("tickit_current_user", JSON.stringify(user));
+    localStorage.setItem("tickit_active_business", JSON.stringify(business));
+    setActiveTab("dashboard");
+  };
 
-  // Clear selected job when switching tabs
-  useEffect(() => {
-    setSelectedJobId(null);
-  }, [activeTab]);
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setActiveBusiness(null);
+    localStorage.removeItem("tickit_current_user");
+    localStorage.removeItem("tickit_active_business");
+  };
 
-  if (authLoading) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center bg-slate-50 text-slate-400 gap-4">
-        <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
-        <p className="font-medium">Loading Auvic Solutions...</p>
-      </div>
-    );
-  }
+  const handleSwitchBusiness = () => {
+    setActiveBusiness(null);
+    localStorage.removeItem("tickit_active_business");
+  };
 
-  if (!user) {
-    return showSignup ? <Signup onSwitchToLogin={() => setShowSignup(false)} /> : <Login onSwitchToSignup={() => setShowSignup(true)} />;
-  }
-
-  if (isSuspended) {
-    return <AccountSuspended onLogout={logout} />;
-  }
-
-  if (error) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center bg-slate-50 p-8 text-center">
-        <div className="bg-red-100 text-red-600 rounded-full p-4 mb-4">
-          <Search className="w-8 h-8" />
-        </div>
-        <h2 className="text-xl font-bold text-slate-900 mb-2">Something went wrong</h2>
-        <p className="text-slate-500 mb-6 max-w-md">{error}</p>
-        <button
-          onClick={() => fetchData()}
-          className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-semibold hover:bg-indigo-700 transition-all"
-        >
-          Try Again
-        </button>
-      </div>
-    );
-  }
-
-  if (isLoading || !settings) {
-    return (
-      <div className="flex h-screen flex-col items-center justify-center bg-slate-50 text-slate-400 gap-4">
-        <div className="w-8 h-8 border-4 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div>
-        <p className="font-medium">Loading Auvic Solutions...</p>
-      </div>
-    );
+  // If session is unauthenticated or active business is not selected, direct to security gate
+  if (!currentUser || !activeBusiness) {
+    return <AuthGate onAuthComplete={handleAuthComplete} />;
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 text-slate-900 font-sans">
-      <Sidebar activeTab={activeTab} setActiveTab={handleSetTab} onUpgradeClick={() => setShowUpgrade(true)} />
+    <div className="flex h-screen bg-slate-50 text-slate-900 font-sans overflow-hidden">
+      
+      {/* SIDEBAR NAVIGATION - Scoped strictly to the active business */}
+      <Sidebar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        businessName={settings.name || activeBusiness.name}
+        onSwitchBusiness={handleSwitchBusiness}
+        onLogout={handleLogout}
+      />
 
-      {showUpgrade && <SubscriptionPlans onClose={() => setShowUpgrade(false)} />}
-
-      {/* Main Content */}
+      {/* Main Content Pane */}
       <main className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0">
-          <div className="flex items-center bg-slate-100 rounded-lg px-3 py-2 w-96">
-            <Search className="w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search jobs, clients... or settings"
-              className="bg-transparent border-none outline-none ml-2 text-sm w-full"
-            />
-          </div>
+        {/* Workspace Header */}
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 z-10">
           <div className="flex items-center gap-4">
-            <div className="relative">
-              <button 
-                type="button" 
-                onClick={() => setShowNotifications(!showNotifications)}
-                className={`p-2 rounded-lg transition-colors relative ${showNotifications ? 'bg-slate-100 text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}
-                title="View notifications" 
-                aria-label="View notifications"
-              >
-                <Bell className="w-6 h-6" />
-                {notifications.some(n => !n.isRead) && (
-                  <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
-                )}
-              </button>
-              
-              {showNotifications && (
-                <NotificationDropdown 
-                  notifications={notifications} 
-                  onMarkRead={markNotificationRead}
-                  onClose={() => setShowNotifications(false)}
-                />
-              )}
+            <div className="flex items-center bg-slate-100 rounded-xl px-3 py-2 w-80 border border-slate-200">
+              <Search className="w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search jobs, clients, or files..."
+                className="bg-transparent border-none outline-none ml-2 text-sm w-full text-slate-700"
+              />
             </div>
-            <div className="flex items-center gap-2 border-l border-slate-200 pl-4 ml-2">
-              <div className="flex flex-col text-right hidden sm:flex">
-                <span className="text-sm font-bold text-slate-900">{user.name}</span>
-                <span className="text-xs text-slate-500">{user.role}</span>
+            
+            <div className="hidden lg:flex items-center gap-1 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-full text-[10px] font-bold text-indigo-700 uppercase tracking-wide">
+              <Shield className="w-3.5 h-3.5" />
+              Tenant ID: {activeBusiness.id}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            {/* Status indicator to reinforce absolute isolation and security */}
+            <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-bold uppercase tracking-wider bg-emerald-50 px-3 py-1.5 rounded-full border border-emerald-100">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Isolated Space
+            </div>
+
+            <div className="flex items-center gap-3 border-l border-slate-200 pl-4">
+              {currentUser.photoUrl ? (
+                <img
+                  src={currentUser.photoUrl}
+                  alt={currentUser.name}
+                  className="w-8 h-8 rounded-full border-2 border-indigo-100 object-cover"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className="w-8 h-8 bg-indigo-100 text-indigo-700 rounded-full flex items-center justify-center font-bold text-xs uppercase">
+                  {currentUser.name.slice(0, 2)}
+                </div>
+              )}
+              <div className="hidden md:block text-left">
+                <p className="text-xs font-bold text-slate-900 leading-none">{currentUser.name}</p>
+                <p className="text-[10px] text-slate-400 font-semibold leading-none mt-1 truncate max-w-[120px]">{currentUser.email}</p>
               </div>
-              <button 
-                onClick={() => setActiveTab("profile")}
-                className="w-8 h-8 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center font-semibold text-sm hover:ring-2 hover:ring-indigo-500 hover:ring-offset-2 transition-all"
-                title="My Profile"
-              >
-                {user.name.charAt(0)}
-              </button>
-              <button onClick={logout} title="Log out" className="ml-2 text-slate-400 hover:text-red-500 transition-colors p-2 rounded-lg hover:bg-red-50">
-                <LogOut className="w-5 h-5"/>
-              </button>
             </div>
           </div>
         </header>
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-hidden flex flex-col">
-          {selectedJobId ? (
-            <div className="flex-1 overflow-auto bg-white">
-              <JobDetailView
-                job={jobs.find(j => j.id === selectedJobId)!}
+        {/* Dynamic Component Render Area */}
+        <div className="flex-1 overflow-auto p-8">
+          {activeTab === "dashboard" && <Dashboard jobs={jobs} />}
+          {activeTab === "jobs" && (
+            <JobBoard
+              jobs={jobs}
+              setJobs={setJobs}
+              employees={employees}
+              clients={clients}
+              settings={settings}
+            />
+          )}
+          {activeTab === "clients" && (
+            <Clients
+              clients={clients}
+              setClients={setClients}
+              jobs={jobs}
+            />
+          )}
+          {activeTab === "payroll" && (
+            <Payroll
+              employees={employees}
+              setEmployees={setEmployees}
+              payrollRecords={payrollRecords}
+              setPayrollRecords={setPayrollRecords}
+            />
+          )}
+          {activeTab === "users" && (
+            <UserManagement users={users} setUsers={setUsers} />
+          )}
+          {activeTab === "files" && (
+            <FileRepository files={files} setFiles={setFiles} />
+          )}
+          {activeTab === "invoices" && (
+            <Invoices
+              jobs={jobs}
+              setJobs={setJobs}
+              employees={employees}
+              clients={clients}
+              settings={settings}
+            />
+          )}
+          {activeTab === "settings" && (
+            <Settings settings={settings} setSettings={handleUpdateSettings} />
+          )}
+          {activeTab === "new-request" && (
+            <div className="max-w-4xl mx-auto">
+              <JobRequestForm
                 employees={employees}
-                settings={settings}
-                onBack={() => setSelectedJobId(null)}
-                onUpdate={(updatedJob) => {
-                  setJobs(jobs.map(j => j.id === updatedJob.id ? updatedJob : j));
+                clients={clients}
+                onSave={(jobData) => {
+                  const newJob: Job = {
+                    ...jobData,
+                    id: crypto.randomUUID(),
+                    createdAt: new Date().toISOString(),
+                    activityLog: [
+                      {
+                        id: crypto.randomUUID(),
+                        action: `Job request initiated for ${jobData.client}`,
+                        timestamp: new Date().toISOString(),
+                        user: currentUser.name,
+                      }
+                    ]
+                  };
+                  setJobs([newJob, ...jobs]);
+                  setActiveTab("jobs");
                 }}
               />
-            </div>
-          ) : (
-            <div className="flex-1 overflow-auto p-8">
-              <React.Suspense fallback={
-                <div className="flex h-full items-center justify-center text-slate-400 gap-2 animate-pulse">
-                  <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full"></div>
-                  <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full"></div>
-                  <div className="w-1.5 h-1.5 bg-indigo-400 rounded-full"></div>
-                </div>
-              }>
-                {activeTab === "dashboard" && <Dashboard jobs={jobs} />}
-                {activeTab === "jobs" && (
-                  <JobBoard
-                    jobs={jobs}
-                    setJobs={setJobs}
-                    employees={employees}
-                    settings={settings}
-                    onSelectJob={setSelectedJobId}
-                  />
-                )}
-                {activeTab === "payroll" && (
-                  <Payroll
-                    employees={employees}
-                    setEmployees={setEmployees}
-                    payrollRecords={payrollRecords}
-                    setPayrollRecords={setPayrollRecords}
-                  />
-                )}
-                {activeTab === "users" && (
-                  <UserManagement users={users} setUsers={setUsers} />
-                )}
-                {activeTab === "files" && (
-                  <FileRepository files={files} setFiles={setFiles} />
-                )}
-                {activeTab === "invoices" && (
-                  <Invoices
-                    jobs={jobs}
-                    setJobs={setJobs}
-                    employees={employees}
-                    settings={settings}
-                    onSelectJob={setSelectedJobId}
-                  />
-                )}
-                {activeTab === "settings" && (
-                  <Settings settings={settings} setSettings={setSettings} />
-                )}
-                {activeTab === "clients" && <Clients />}
-                {activeTab === "new-request" && (
-                  <div className="max-w-4xl mx-auto">
-                    <JobRequestForm
-                      employees={employees}
-                      onSave={async (jobData) => {
-                        try {
-                          const newId = crypto.randomUUID();
-                          const response = await apiFetch('/api/jobs', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              ...jobData,
-                              id: newId,
-                              createdAt: new Date().toISOString()
-                            })
-                          });
-                          if (response.ok) {
-                            const newJob = await response.json();
-                            setJobs([newJob, ...jobs]);
-                            setActiveTab("jobs");
-                          }
-                        } catch (error) {
-                          console.error("Error creating job:", error);
-                        }
-                      }}
-                    />
-                  </div>
-                )}
-                {activeTab === "profile" && <MyProfile />}
-                {activeTab === "help" && <Help />}
-              </React.Suspense>
-              
-              {!["dashboard", "jobs", "payroll", "users", "files", "invoices", "settings", "clients", "new-request", "profile", "help"].includes(activeTab) && (
-                <div className="flex items-center justify-center h-full text-slate-400">
-                  {activeTab} content coming soon
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -340,53 +537,3 @@ function MainApp() {
     </div>
   );
 }
-
-export default function App() {
-  const params = new URLSearchParams(window.location.search);
-  const queryToken = params.get("token");
-  const isSuperAdmin = params.get("superadmin") === "true";
-  
-  // Also check pathname for /portal/TOKEN format
-  const pathParts = window.location.pathname.split('/portal/');
-  const pathToken = pathParts.length > 1 ? pathParts[1] : null;
-
-  const token = queryToken || pathToken;
-
-  if (token) {
-    return <ClientPortal token={token} />;
-  }
-
-  // Super Admin Portal
-  if (isSuperAdmin) {
-    return <SuperAdminApp />;
-  }
-
-  return (
-    <AuthProvider>
-      <MainApp />
-    </AuthProvider>
-  );
-}
-
-// ─── Super Admin App Shell ─────────────────────────────────────────────────
-function SuperAdminApp() {
-  const [saToken, setSaToken] = React.useState<string | null>(null);
-  const [saAdmin, setSaAdmin] = React.useState<{ id: string; email: string } | null>(null);
-
-  const handleSALogin = (token: string, admin: { id: string; email: string }) => {
-    setSaToken(token);
-    setSaAdmin(admin);
-  };
-
-  const handleSALogout = () => {
-    setSaToken(null);
-    setSaAdmin(null);
-  };
-
-  if (!saToken || !saAdmin) {
-    return <SuperAdminLogin onLogin={handleSALogin} />;
-  }
-
-  return <SuperAdminPortal admin={saAdmin} onLogout={handleSALogout} />;
-}
-

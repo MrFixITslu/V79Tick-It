@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Job, Employee } from "../types";
+import { Job, Employee, Client, BusinessSettings } from "../types";
 import {
   FileText,
   Search,
@@ -11,23 +11,23 @@ import {
   Printer,
   Eye,
 } from "lucide-react";
-import { JobDetailView } from "./JobDetailView";
-import { BusinessSettings } from "./Settings";
+import { JobDetailModal } from "./JobDetailModal";
 
 export function Invoices({
   jobs,
   setJobs,
   employees,
+  clients,
   settings,
-  onSelectJob,
 }: {
   jobs: Job[];
   setJobs: React.Dispatch<React.SetStateAction<Job[]>>;
   employees: Employee[];
+  clients: Client[];
   settings: BusinessSettings;
-  onSelectJob: (id: string) => void;
 }) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
 
   // Filter jobs that are either 'invoiced', 'completed', or 'paid'
   const invoiceableJobs = jobs.filter(
@@ -48,6 +48,8 @@ export function Invoices({
   const totalPending = jobs
     .filter((j) => j.status === "invoiced" || j.status === "completed")
     .reduce((sum, j) => sum + (j.amount || 0), 0);
+
+  const selectedJob = jobs.find((j) => j.id === selectedJobId);
 
   return (
     <div className="space-y-8">
@@ -135,7 +137,7 @@ export function Invoices({
                 </td>
                 <td className="px-6 py-4">
                   <span
-                    className={`text-xs font-bold uppercase tracking-widest px-2 py-1 rounded-full ${
+                    className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-full ${
                       job.status === "completed"
                         ? "bg-green-100 text-green-700"
                         : job.status === "paid"
@@ -161,7 +163,7 @@ export function Invoices({
                       </button>
                     )}
                     <button
-                      onClick={() => onSelectJob(job.id)}
+                      onClick={() => setSelectedJobId(job.id)}
                       className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors flex items-center gap-2 text-xs font-bold uppercase tracking-widest"
                     >
                       <Eye className="w-4 h-4" />
@@ -184,6 +186,19 @@ export function Invoices({
           </tbody>
         </table>
       </div>
+
+      {selectedJob && (
+        <JobDetailModal
+          job={selectedJob}
+          employees={employees}
+          clients={clients}
+          settings={settings}
+          onClose={() => setSelectedJobId(null)}
+          onUpdate={(updatedJob) => {
+            setJobs(jobs.map((j) => (j.id === updatedJob.id ? updatedJob : j)));
+          }}
+        />
+      )}
     </div>
   );
 }
